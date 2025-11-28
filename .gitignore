@@ -52,3 +52,9 @@ compile_commands.json
 *creator.user*
 
 *_qmlcache.qrc
+
+# ================================
+# AI Dev Tools 自动生成文件
+# ================================
+ai-dev-reports/
+.ai-dev-cache/
