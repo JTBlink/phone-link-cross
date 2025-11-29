@@ -7,9 +7,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network)
 
-# 尝试查找 LinguistTools（可选，用于翻译）
-find_package(Qt6 QUIET COMPONENTS LinguistTools)
-
 # 查找 libimobiledevice（可选）
 find_package(PkgConfig QUIET)
 set(LIBIMOBILEDEVICE_AVAILABLE FALSE)
@@ -37,16 +34,9 @@ qt_add_executable(phone-linkc
     deviceinfo.h
 )
 
-# 添加翻译文件（如果 LinguistTools 可用且文件存在）
-if(Qt6LinguistTools_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/phone-linkc_zh_CN.ts")
-    qt_add_translations(
-        TARGETS phone-linkc
-        TS_FILES phone-linkc_zh_CN.ts
-    )
-    message(STATUS "Translation support enabled")
-else()
-    message(STATUS "Translation support disabled (LinguistTools not found or TS file missing)")
-endif()
+# 翻译支持暂时禁用以避免构建问题
+# TODO: 在未来版本中重新启用翻译支持
+message(STATUS "Translation support disabled (to avoid build issues)")
 
 target_link_libraries(phone-linkc
     PRIVATE

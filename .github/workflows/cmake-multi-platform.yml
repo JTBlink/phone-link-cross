@@ -92,7 +92,8 @@ jobs:
     - name: Install libimobiledevice (macOS)
       if: runner.os == 'macOS'
       run: |
-        brew install libimobiledevice libplist libusbmuxd
+        brew install libimobiledevice libplist libusbmuxd pkg-config
+        echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
 
     # Note: libimobiledevice is not easily available on Windows
     # The Windows build will use simulation mode
