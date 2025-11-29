@@ -1,0 +1,220 @@
+# GitHub Actions workflow for multi-platform CMake builds
+name: CMake Multi-Platform Build
+
+on:
+  push:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master", "develop" ]
+
+env:
+  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      # Set fail-fast to false to ensure that feedback is delivered for all matrix combinations.
+      # Consider changing this to true when your workflow is stable.
+      fail-fast: false
+
+      # Set up a matrix to run the following 3 configurations:
+      # 1. <Windows, Release, latest MSVC compiler toolchain on the default runner image, default generator>
+      # 2. <Linux, Release, latest GCC compiler toolchain on the default runner image, default generator>
+      # 3. <Linux, Release, latest Clang compiler toolchain on the default runner image, default generator>
+      # 4. <macOS, Release, latest Clang compiler toolchain on the default runner image, default generator>
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        c_compiler: [gcc, clang, cl]
+        include:
+          - os: windows-latest
+            c_compiler: cl
+            cpp_compiler: cl
+          - os: ubuntu-latest
+            c_compiler: gcc
+            cpp_compiler: g++
+          - os: ubuntu-latest
+            c_compiler: clang
+            cpp_compiler: clang++
+          - os: macos-latest
+            c_compiler: clang
+            cpp_compiler: clang++
+        exclude:
+          - os: windows-latest
+            c_compiler: gcc
+          - os: windows-latest
+            c_compiler: clang
+          - os: ubuntu-latest
+            c_compiler: cl
+          - os: macos-latest
+            c_compiler: cl
+          - os: macos-latest
+            c_compiler: gcc
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set reusable strings
+      # Turn repeated input strings (such as the build output directory) into step outputs. 
+      # These step outputs can be used throughout the workflow file.
+      id: strings
+      shell: bash
+      run: |
+        echo "build-output-dir=${{ github.workspace }}/phone-linkc/build" >> "$GITHUB_OUTPUT"
+
+    - name: Install Qt (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y qt6-base-dev qt6-tools-dev libgl1-mesa-dev
+
+    - name: Install Qt (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install qt6
+
+    - name: Install Qt (Windows)
+      if: runner.os == 'Windows'
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: '6.6.0'
+        host: 'windows'
+        target: 'desktop'
+        arch: 'win64_msvc2019_64'
+
+    - name: Install libimobiledevice (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get install -y libimobiledevice-dev libplist-dev libusbmuxd-dev
+
+    - name: Install libimobiledevice (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install libimobiledevice libplist libusbmuxd
+
+    # Note: libimobiledevice is not easily available on Windows
+    # The Windows build will use simulation mode
+
+    - name: Configure CMake (phone-linkc)
+      # Configure CMake in a 'build' subdirectory of phone-linkc.
+      # `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      run: >
+        cmake -B ${{ steps.strings.outputs.build-output-dir }}
+        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
+        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
+        -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+        -S ${{ github.workspace }}/phone-linkc
+
+    - name: Build phone-linkc
+      # Build your program with the given configuration. 
+      # Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
+      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ env.BUILD_TYPE }}
+
+    - name: Test phone-linkc (Linux/macOS)
+      if: runner.os != 'Windows'
+      working-directory: ${{ steps.strings.outputs.build-output-dir }}
+      # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
+      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
+      run: |
+        # For now, just check if the executable exists and can show help/version
+        if [ -f "./phone-linkc" ]; then
+          echo "✓ phone-linkc executable found (Linux)"
+          # You can add actual tests here
+        elif [ -d "./phone-linkc.app" ]; then
+          echo "✓ phone-linkc.app bundle found (macOS)"
+          # You can add actual tests here
+        else
+          echo "✗ Executable not found"
+          ls -la
+          exit 1
+        fi
+
+    - name: Test phone-linkc (Windows)
+      if: runner.os == 'Windows'
+      working-directory: ${{ steps.strings.outputs.build-output-dir }}
+      run: |
+        if (Test-Path "./Release/phone-linkc.exe") {
+          Write-Host "✓ phone-linkc.exe found (Windows Release)"
+        } elseif (Test-Path "./Debug/phone-linkc.exe") {
+          Write-Host "✓ phone-linkc.exe found (Windows Debug)"
+        } elseif (Test-Path "./phone-linkc.exe") {
+          Write-Host "✓ phone-linkc.exe found (Windows)"
+        } else {
+          Write-Host "✗ Executable not found"
+          Get-ChildItem -Recurse -Name "*.exe"
+          exit 1
+        }
+
+    - name: Upload build artifacts (Ubuntu)
+      if: runner.os == 'Linux' && matrix.c_compiler == 'gcc'
+      uses: actions/upload-artifact@v3
+      with:
+        name: phone-linkc-linux-x64
+        path: |
+          ${{ steps.strings.outputs.build-output-dir }}/phone-linkc
+          ${{ steps.strings.outputs.build-output-dir }}/*.qm
+
+    - name: Upload build artifacts (macOS)
+      if: runner.os == 'macOS'
+      uses: actions/upload-artifact@v3
+      with:
+        name: phone-linkc-macos-x64
+        path: |
+          ${{ steps.strings.outputs.build-output-dir }}/phone-linkc.app
+
+    - name: Upload build artifacts (Windows)
+      if: runner.os == 'Windows'
+      uses: actions/upload-artifact@v3
+      with:
+        name: phone-linkc-windows-x64
+        path: |
+          ${{ steps.strings.outputs.build-output-dir }}/Release/phone-linkc.exe
+          ${{ steps.strings.outputs.build-output-dir }}/Debug/phone-linkc.exe
+          ${{ steps.strings.outputs.build-output-dir }}/*.qm
+
+  # Optional: Create a release when pushing a tag
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+      
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          phone-linkc-linux-x64/*
+          phone-linkc-macos-x64/*
+          phone-linkc-windows-x64/*
+        body: |
+          ## iOS 设备管理器 - libimobiledevice 示例
+          
+          这是一个完整的 Qt 应用程序，展示如何使用 libimobiledevice 管理 iOS 设备。
+          
+          ### 下载说明
+          
+          - **Linux**: `phone-linkc` (需要安装 Qt 6.5+ 和 libimobiledevice)
+          - **macOS**: `phone-linkc.app` (需要安装 Qt 6.5+ 和 libimobiledevice)  
+          - **Windows**: `phone-linkc.exe` (需要安装 Qt 6.5+，模拟模式)
+          
+          ### 功能特性
+          
+          - ✅ 实时设备发现
+          - ✅ 设备连接管理
+          - ✅ 详细设备信息获取
+          - ✅ 用户友好界面
+          - ✅ 跨平台支持
+          
+          更多信息请参考项目文档。
+        draft: false
+        prerelease: false
