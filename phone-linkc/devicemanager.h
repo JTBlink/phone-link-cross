@@ -7,8 +7,11 @@
 #include <QVariantMap>
 
 #ifdef HAVE_LIBIMOBILEDEVICE
-#include <libimobiledevice/libimobiledevice.h>
-#include <libimobiledevice/lockdown.h>
+// Forward declarations to avoid including headers in header file
+typedef struct idevice_private idevice_private;
+typedef idevice_private* idevice_t;
+typedef struct lockdownd_client_private lockdownd_client_private;
+typedef lockdownd_client_private* lockdownd_client_t;
 #endif
 
 class DeviceManager : public QObject

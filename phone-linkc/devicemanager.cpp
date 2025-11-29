@@ -3,6 +3,8 @@
 #include <QRandomGenerator>
 
 #ifdef HAVE_LIBIMOBILEDEVICE
+#include <libimobiledevice/libimobiledevice.h>
+#include <libimobiledevice/lockdown.h>
 #include <libplist/plist.h>
 #endif
 
