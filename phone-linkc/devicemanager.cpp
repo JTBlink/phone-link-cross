@@ -25,7 +25,7 @@ DeviceManager::DeviceManager(QObject *parent)
 #ifdef HAVE_LIBIMOBILEDEVICE
     qDebug() << "libimobiledevice 支持已启用";
 #else
-    qDebug() << "libimobiledevice 不可用，使用模拟模式";
+    qDebug() << "libimobiledevice 不可用，无法连接 iOS 设备";
 #endif
 }
 
@@ -100,8 +100,8 @@ void DeviceManager::checkDevices()
     // 清理设备列表
     idevice_device_list_free(device_list);
 #else
-    // 模拟设备发现
-    simulateDeviceDiscovery();
+    // 没有 libimobiledevice 支持，无法检测设备
+    // 不显示弹窗提示，用户界面会显示相应的信息
 #endif
 }
 
@@ -125,17 +125,9 @@ bool DeviceManager::connectToDevice(const QString &udid)
         return false;
     }
 #else
-    // 模拟连接
-    if (m_knownDevices.contains(udid)) {
-        m_currentUdid = udid;
-        m_isConnected = true;
-        emit deviceConnected(udid);
-        qDebug() << "模拟连接到设备:" << udid;
-        return true;
-    } else {
-        emit errorOccurred(QString("模拟模式：设备 %1 不存在").arg(udid));
-        return false;
-    }
+    // 没有 libimobiledevice 支持，无法连接设备
+    emit errorOccurred("libimobiledevice 未安装或不可用。无法连接到 iOS 设备。");
+    return false;
 #endif
 }
 
@@ -215,39 +207,3 @@ void DeviceManager::cleanup()
     }
 }
 #endif
-
-void DeviceManager::simulateDeviceDiscovery()
-{
-    // 模拟设备发现 - 用于演示目的
-    static bool hasSimulatedDevice = false;
-    static int discoveryCount = 0;
-    
-    discoveryCount++;
-    
-    // 第3次发现时添加模拟设备
-    if (discoveryCount == 3 && !hasSimulatedDevice) {
-        QString udid = "00000000-0000000000000000";
-        QString name = "模拟 iPhone";
-        
-        m_knownDevices << udid;
-        hasSimulatedDevice = true;
-        
-        qDebug() << "模拟发现设备:" << udid << "名称:" << name;
-        emit deviceFound(udid, name);
-    }
-    
-    // 第10次发现时移除模拟设备
-    if (discoveryCount == 10 && hasSimulatedDevice) {
-        QString udid = "00000000-0000000000000000";
-        m_knownDevices.removeAll(udid);
-        hasSimulatedDevice = false;
-        discoveryCount = 0; // 重置计数器
-        
-        qDebug() << "模拟设备断开:" << udid;
-        emit deviceLost(udid);
-        
-        if (m_currentUdid == udid) {
-            disconnectFromDevice();
-        }
-    }
-}

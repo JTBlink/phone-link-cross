@@ -58,8 +58,6 @@ private:
     void cleanup();
 #endif
 
-    // 模拟设备（用于没有 libimobiledevice 的情况）
-    void simulateDeviceDiscovery();
 };
 
 #endif // DEVICEMANAGER_H
