@@ -24,9 +24,15 @@ git clone https://github.com/JTBlink/phone-link-cross.git
 cd phone-link-cross/phone-linkc
 
 # 构建和运行
-./build.sh        # Linux/macOS
+./build.sh          # Linux/macOS 主入口脚本
 # 或
-build.bat         # Windows
+build.bat           # Windows 主入口脚本
+
+# 高级用法
+./build.sh check-deps    # 检查和诊断依赖
+./build.sh build         # 仅构建项目
+./build.sh clean         # 清理构建文件
+./build.sh help          # 显示帮助信息
 ```
 
 ### 功能特性

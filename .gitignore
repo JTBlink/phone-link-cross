@@ -28,9 +28,12 @@ ui_*.h
 *.qmlc
 *.jsc
 Makefile*
-*build-*
 *.qm
 *.prl
+
+# 构建目录和临时文件（排除 scripts/build-impl.sh）
+build/
+build-*/
 
 # Qt unit tests
 target_wrapper.*

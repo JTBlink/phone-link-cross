@@ -80,3 +80,9 @@ CMakeLists.txt.user*
 .rcc/
 .uic/
 /build*/
+
+# ================================
+# AI Dev Tools 自动生成文件
+# ================================
+ai-dev-reports/
+.ai-dev-cache/
