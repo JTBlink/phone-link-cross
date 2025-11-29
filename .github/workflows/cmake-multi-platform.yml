@@ -191,8 +191,6 @@ jobs:
           ${{ steps.strings.outputs.build-output-dir }}/phone-linkc
           ${{ steps.strings.outputs.build-output-dir }}/*.qm
         include-attestations: true
-        upload-artifact@v4:
-          include-attestations: true
 
     - name: Upload build artifacts (macOS)
       if: runner.os == 'macOS'
