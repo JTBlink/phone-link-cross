@@ -64,6 +64,11 @@ jobs:
       run: |
         echo "build-output-dir=${{ github.workspace }}/phone-linkc/build" >> "$GITHUB_OUTPUT"
 
+    - name: Setup Python for Qt installation
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        
     - name: Install Qt (All Platforms)
       uses: jurplel/install-qt-action@v4
       with:
@@ -75,7 +80,7 @@ jobs:
               runner.os == 'macOS' && 'clang_64' || 
               'gcc_64' }}
         modules: 'qtnetworkauth'
-        setup-python: 'false'
+        setup-python: 'true'
         cache: true
 
     - name: Install libimobiledevice (Ubuntu)
