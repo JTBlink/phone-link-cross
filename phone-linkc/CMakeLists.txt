@@ -5,14 +5,17 @@ project(phone-linkc LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network LinguistTools)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network)
+
+# 尝试查找 LinguistTools（可选，用于翻译）
+find_package(Qt6 QUIET COMPONENTS LinguistTools)
 
 # 查找 libimobiledevice（可选）
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
-    pkg_check_modules(IMOBILEDEVICE libimobiledevice-1.0)
-    pkg_check_modules(PLIST libplist-2.0)
-    pkg_check_modules(USBMUXD libusbmuxd-2.0)
+    pkg_check_modules(IMOBILEDEVICE QUIET libimobiledevice-1.0)
+    pkg_check_modules(PLIST QUIET libplist-2.0)
+    pkg_check_modules(USBMUXD QUIET libusbmuxd-2.0)
 endif()
 
 qt_standard_project_setup()
@@ -29,10 +32,16 @@ qt_add_executable(phone-linkc
     deviceinfo.h
 )
 
-qt_add_translations(
-    TARGETS phone-linkc
-    TS_FILES phone-linkc_zh_CN.ts
-)
+# 添加翻译文件（如果 LinguistTools 可用且文件存在）
+if(Qt6LinguistTools_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/phone-linkc_zh_CN.ts")
+    qt_add_translations(
+        TARGETS phone-linkc
+        TS_FILES phone-linkc_zh_CN.ts
+    )
+    message(STATUS "Translation support enabled")
+else()
+    message(STATUS "Translation support disabled (LinguistTools not found or TS file missing)")
+endif()
 
 target_link_libraries(phone-linkc
     PRIVATE
