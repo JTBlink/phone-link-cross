@@ -5,7 +5,7 @@
 #ifdef HAVE_LIBIMOBILEDEVICE
 #include <libimobiledevice/libimobiledevice.h>
 #include <libimobiledevice/lockdown.h>
-#include <libplist/plist.h>
+#include <plist/plist.h>
 #endif
 
 DeviceManager::DeviceManager(QObject *parent)

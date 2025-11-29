@@ -58,11 +58,11 @@ if(APPLE AND NOT LIBIMOBILEDEVICE_AVAILABLE)
         message(STATUS "✗ libimobiledevice.h not found at ${HOMEBREW_PREFIX}/include/libimobiledevice/")
     endif()
     
-    if(EXISTS "${HOMEBREW_PREFIX}/include/libplist/plist.h")
+    if(EXISTS "${HOMEBREW_PREFIX}/include/plist/plist.h")
         set(PLIST_HEADER_FOUND TRUE)
-        message(STATUS "✓ plist.h found at ${HOMEBREW_PREFIX}/include/libplist/")
+        message(STATUS "✓ plist.h found at ${HOMEBREW_PREFIX}/include/plist/")
     else()
-        message(STATUS "✗ plist.h not found at ${HOMEBREW_PREFIX}/include/libplist/")
+        message(STATUS "✗ plist.h not found at ${HOMEBREW_PREFIX}/include/plist/")
     endif()
     
     if(IDEVICE_HEADER_FOUND AND PLIST_HEADER_FOUND)
@@ -124,21 +124,68 @@ target_link_libraries(phone-linkc
 
 # 如果找到 libimobiledevice，则启用相关功能
 if(LIBIMOBILEDEVICE_AVAILABLE)
-    # 验证头文件是否真的可以找到
-    include(CheckIncludeFiles)
-    set(CMAKE_REQUIRED_INCLUDES ${IMOBILEDEVICE_INCLUDE_DIRS} ${PLIST_INCLUDE_DIRS})
-    check_include_files("libimobiledevice/libimobiledevice.h" HAVE_IDEVICE_HEADER)
-    check_include_files("libplist/plist.h" HAVE_PLIST_HEADER)
+    # 验证头文件是否真的可以找到 - 使用简单的文件存在检查
+    set(HAVE_IDEVICE_HEADER FALSE)
+    set(HAVE_PLIST_HEADER FALSE)
+    
+    # 检查 libimobiledevice 头文件
+    foreach(dir ${IMOBILEDEVICE_INCLUDE_DIRS})
+        if(EXISTS "${dir}/libimobiledevice/libimobiledevice.h")
+            set(HAVE_IDEVICE_HEADER TRUE)
+            message(STATUS "Found libimobiledevice header at: ${dir}/libimobiledevice/libimobiledevice.h")
+            break()
+        endif()
+    endforeach()
+    
+    # 检查 plist 头文件
+    foreach(dir ${PLIST_INCLUDE_DIRS})
+        if(EXISTS "${dir}/plist/plist.h")
+            set(HAVE_PLIST_HEADER TRUE)
+            message(STATUS "Found plist header at: ${dir}/plist/plist.h")
+            break()
+        endif()
+    endforeach()
+    
+    # 输出调试信息
+    message(STATUS "Header check results:")
+    message(STATUS "  - HAVE_IDEVICE_HEADER: ${HAVE_IDEVICE_HEADER}")
+    message(STATUS "  - HAVE_PLIST_HEADER: ${HAVE_PLIST_HEADER}")
     
     if(HAVE_IDEVICE_HEADER AND HAVE_PLIST_HEADER)
         target_compile_definitions(phone-linkc PRIVATE HAVE_LIBIMOBILEDEVICE)
         
-        # 链接库
-        target_link_libraries(phone-linkc
-            PRIVATE
-            ${IMOBILEDEVICE_LIBRARIES}
-            ${PLIST_LIBRARIES}
+        # 链接库 - 直接查找库文件
+        find_library(IMOBILEDEVICE_LIB
+            NAMES imobiledevice-1.0 libimobiledevice-1.0
+            PATHS /usr/local/lib /usr/local/Cellar/libimobiledevice/*/lib
+            NO_DEFAULT_PATH
         )
+        
+        find_library(PLIST_LIB
+            NAMES plist-2.0 libplist-2.0
+            PATHS /usr/local/lib /usr/local/Cellar/libplist/*/lib
+            NO_DEFAULT_PATH
+        )
+        
+        find_library(USBMUXD_LIB
+            NAMES usbmuxd-2.0 libusbmuxd-2.0
+            PATHS /usr/local/lib /usr/local/Cellar/libusbmuxd/*/lib
+            NO_DEFAULT_PATH
+        )
+        
+        message(STATUS "Found libraries:")
+        message(STATUS "  - IMOBILEDEVICE_LIB: ${IMOBILEDEVICE_LIB}")
+        message(STATUS "  - PLIST_LIB: ${PLIST_LIB}")
+        message(STATUS "  - USBMUXD_LIB: ${USBMUXD_LIB}")
+        
+        if(IMOBILEDEVICE_LIB AND PLIST_LIB)
+            target_link_libraries(phone-linkc PRIVATE ${IMOBILEDEVICE_LIB} ${PLIST_LIB})
+            if(USBMUXD_LIB)
+                target_link_libraries(phone-linkc PRIVATE ${USBMUXD_LIB})
+            endif()
+        else()
+            message(WARNING "Could not find required libraries for libimobiledevice")
+        endif()
         
         # 添加包含目录
         if(IMOBILEDEVICE_INCLUDE_DIRS)
@@ -156,15 +203,7 @@ if(LIBIMOBILEDEVICE_AVAILABLE)
             target_compile_options(phone-linkc PRIVATE ${PLIST_CFLAGS_OTHER})
         endif()
         
-        if(USBMUXD_FOUND)
-            target_link_libraries(phone-linkc PRIVATE ${USBMUXD_LIBRARIES})
-            if(USBMUXD_INCLUDE_DIRS)
-                target_include_directories(phone-linkc PRIVATE ${USBMUXD_INCLUDE_DIRS})
-            endif()
-            if(USBMUXD_CFLAGS_OTHER)
-                target_compile_options(phone-linkc PRIVATE ${USBMUXD_CFLAGS_OTHER})
-            endif()
-        endif()
+        # USBMUXD 库已通过上面的 find_library 处理，不需要额外配置
         
         message(STATUS "libimobiledevice support enabled")
         message(STATUS "  - libimobiledevice include dirs: ${IMOBILEDEVICE_INCLUDE_DIRS}")

@@ -140,18 +140,25 @@ check_files() {
     
     # 检查头文件
     echo "头文件检查:"
-    HEADERS=("libimobiledevice/libimobiledevice.h" "libplist/plist.h" "libusbmuxd/usbmuxd.h")
-    for header in "${HEADERS[@]}"; do
+    # 使用正确的头文件路径
+    HEADERS=("libimobiledevice/libimobiledevice.h" "plist/plist.h" "usbmuxd.h")
+    HEADER_NAMES=("libimobiledevice" "libplist" "libusbmuxd")
+    
+    for i in "${!HEADERS[@]}"; do
+        header="${HEADERS[$i]}"
+        name="${HEADER_NAMES[$i]}"
         found=false
+        
         for path in "${INCLUDE_PATHS[@]}"; do
             if [ -f "$path/$header" ]; then
-                echo -e "${GREEN}✓${NC} $header 找到: $path/$header"
+                echo -e "${GREEN}✓${NC} $name ($header) 找到: $path/$header"
                 found=true
                 break
             fi
         done
+        
         if [ "$found" = false ]; then
-            echo -e "${RED}✗${NC} $header 未找到"
+            echo -e "${RED}✗${NC} $name ($header) 未找到"
         fi
     done
     
@@ -197,6 +204,8 @@ check_pkg_config_query() {
     echo "=== pkg-config 查询测试 ==="
     
     MODULES=("libimobiledevice-1.0" "libplist-2.0" "libusbmuxd-2.0")
+    ALL_MODULES_FOUND=true
+    
     for module in "${MODULES[@]}"; do
         if pkg-config --exists "$module" 2>/dev/null; then
             VERSION=$(pkg-config --modversion "$module")
@@ -206,11 +215,185 @@ check_pkg_config_query() {
             echo "  版本: $VERSION"
             echo "  CFLAGS: $CFLAGS"
             echo "  LIBS: $LIBS"
+            
+            # 验证头文件是否真的可以找到
+            check_headers_from_cflags "$module" "$CFLAGS"
         else
             echo -e "${RED}✗${NC} $module 无法查询"
+            ALL_MODULES_FOUND=false
         fi
         echo ""
     done
+    
+    # 如果所有模块都找到了，测试编译
+    if [ "$ALL_MODULES_FOUND" = true ]; then
+        test_compilation
+    fi
+}
+
+# 验证从 CFLAGS 中的头文件路径
+check_headers_from_cflags() {
+    local module=$1
+    local cflags=$2
+    
+    echo "    验证头文件可访问性:"
+    
+    # 提取 -I 路径
+    include_paths=$(echo "$cflags" | grep -o '\-I[^ ]*' | sed 's/-I//')
+    
+    if [ "$module" = "libimobiledevice-1.0" ]; then
+        header="libimobiledevice/libimobiledevice.h"
+    elif [ "$module" = "libplist-2.0" ]; then
+        header="plist/plist.h"  # 使用正确的路径
+    elif [ "$module" = "libusbmuxd-2.0" ]; then
+        header="usbmuxd.h"      # 使用正确的路径
+    fi
+    
+    found_header=false
+    for path in $include_paths; do
+        if [ -f "$path/$header" ]; then
+            echo -e "    ${GREEN}✓${NC} $header 在 $path/ 中找到"
+            found_header=true
+        fi
+    done
+    
+    if [ "$found_header" = false ]; then
+        echo -e "    ${RED}✗${NC} $header 在指定的包含路径中未找到"
+        echo -e "    ${YELLOW}⚠${NC} 这可能导致 CMake 配置失败"
+    fi
+}
+
+# 测试实际编译
+test_compilation() {
+    echo ""
+    echo "=== 编译测试 ==="
+    
+    # 创建临时测试文件
+    TEST_DIR="/tmp/libimobiledevice_test_$$"
+    mkdir -p "$TEST_DIR"
+    
+    cat > "$TEST_DIR/test.c" << 'EOF'
+#include <stdio.h>
+#include <libimobiledevice/libimobiledevice.h>
+#include <plist/plist.h>
+
+int main() {
+    char **devices = NULL;
+    int count = 0;
+    
+    if (idevice_get_device_list(&devices, &count) == IDEVICE_E_SUCCESS) {
+        printf("libimobiledevice 编译测试成功！\n");
+        idevice_device_list_free(devices);
+        return 0;
+    }
+    
+    return 1;
+}
+EOF
+
+    # 尝试编译
+    cd "$TEST_DIR"
+    
+    CFLAGS=$(pkg-config --cflags libimobiledevice-1.0 libplist-2.0)
+    LIBS=$(pkg-config --libs libimobiledevice-1.0 libplist-2.0)
+    
+    echo "编译命令: gcc test.c $CFLAGS $LIBS -o test"
+    
+    if gcc test.c $CFLAGS $LIBS -o test 2>/dev/null; then
+        echo -e "${GREEN}✓${NC} 编译测试成功！"
+        echo "libimobiledevice 库可以正常使用"
+        
+        # 尝试运行测试程序
+        if ./test >/dev/null 2>&1; then
+            echo -e "${GREEN}✓${NC} 运行测试成功！"
+        else
+            echo -e "${YELLOW}⚠${NC} 编译成功但运行失败（这是正常的，可能需要连接设备）"
+        fi
+    else
+        echo -e "${RED}✗${NC} 编译测试失败！"
+        echo "错误详情:"
+        gcc test.c $CFLAGS $LIBS -o test
+        echo ""
+        echo -e "${YELLOW}可能的解决方案:${NC}"
+        echo "1. 重新安装 libimobiledevice: brew reinstall libimobiledevice"
+        echo "2. 清理并重新安装所有依赖: brew uninstall libimobiledevice libplist libusbmuxd && brew install libimobiledevice"
+        echo "3. 检查 Xcode 命令行工具: xcode-select --install"
+    fi
+    
+    # 清理测试文件
+    cd - >/dev/null
+    rm -rf "$TEST_DIR"
+}
+
+# 检查 CMake 配置问题
+check_cmake_issues() {
+    echo ""
+    echo "=== CMake 配置问题诊断 ==="
+    
+    # 检查是否存在构建目录
+    if [ -d "build" ]; then
+        echo "检查现有的 CMake 配置..."
+        
+        if [ -f "build/CMakeCache.txt" ]; then
+            echo "分析 CMakeCache.txt:"
+            
+            # 检查 libimobiledevice 相关的 CMake 变量
+            if grep -q "HAVE_LIBIMOBILEDEVICE" "build/CMakeCache.txt"; then
+                HAVE_LIB=$(grep "HAVE_LIBIMOBILEDEVICE" "build/CMakeCache.txt" | cut -d'=' -f2)
+                echo "  HAVE_LIBIMOBILEDEVICE: $HAVE_LIB"
+            fi
+            
+            # 检查包含目录
+            if grep -q "IMOBILEDEVICE_INCLUDE_DIRS" "build/CMakeCache.txt"; then
+                INCLUDE_DIRS=$(grep "IMOBILEDEVICE_INCLUDE_DIRS" "build/CMakeCache.txt" | cut -d'=' -f2)
+                echo "  包含目录: $INCLUDE_DIRS"
+            fi
+            
+            # 检查库文件
+            if grep -q "IMOBILEDEVICE_LIBRARIES" "build/CMakeCache.txt"; then
+                LIBRARIES=$(grep "IMOBILEDEVICE_LIBRARIES" "build/CMakeCache.txt" | cut -d'=' -f2)
+                echo "  库文件: $LIBRARIES"
+            fi
+            
+            # 检查头文件检查结果
+            if grep -q "HAVE_IDEVICE_HEADER" "build/CMakeCache.txt"; then
+                HAVE_HEADER=$(grep "HAVE_IDEVICE_HEADER" "build/CMakeCache.txt" | cut -d'=' -f2)
+                echo "  头文件检查: HAVE_IDEVICE_HEADER=$HAVE_HEADER"
+                
+                if [ "$HAVE_HEADER" != "1" ]; then
+                    echo -e "  ${RED}✗${NC} CMake 无法找到 libimobiledevice 头文件"
+                    echo -e "  ${YELLOW}建议解决方案:${NC}"
+                    echo "    1. 清理构建缓存: rm -rf build && mkdir build"
+                    echo "    2. 重新安装 libimobiledevice: brew reinstall libimobiledevice"
+                    echo "    3. 检查环境变量: echo \$PKG_CONFIG_PATH"
+                else
+                    echo -e "  ${GREEN}✓${NC} CMake 可以找到头文件"
+                fi
+            fi
+            
+            if grep -q "HAVE_PLIST_HEADER" "build/CMakeCache.txt"; then
+                HAVE_PLIST=$(grep "HAVE_PLIST_HEADER" "build/CMakeCache.txt" | cut -d'=' -f2)
+                echo "  plist 头文件检查: HAVE_PLIST_HEADER=$HAVE_PLIST"
+                
+                if [ "$HAVE_PLIST" != "1" ]; then
+                    echo -e "  ${RED}✗${NC} CMake 无法找到 libplist 头文件"
+                fi
+            fi
+        else
+            echo -e "${YELLOW}⚠${NC} 未找到 CMakeCache.txt，可能需要先运行 CMake 配置"
+        fi
+        
+        echo ""
+        echo "建议的 CMake 重新配置步骤:"
+        echo "1. cd phone-linkc"
+        echo "2. rm -rf build"
+        echo "3. mkdir build && cd build"
+        echo "4. export PKG_CONFIG_PATH=\"$HOMEBREW_PREFIX/lib/pkgconfig:\$PKG_CONFIG_PATH\""
+        echo "5. cmake .."
+        echo "6. make"
+    else
+        echo "未找到构建目录，请先运行构建脚本"
+    fi
 }
 
 # 提供安装建议
@@ -251,6 +434,7 @@ provide_installation_advice() {
         echo "1. PKG_CONFIG_PATH 环境变量是否正确设置"
         echo "2. 重新开启终端会话让环境变量生效"
         echo "3. 运行 'pkg-config --exists libimobiledevice-1.0' 验证"
+        echo "4. 清理并重新构建: rm -rf build && mkdir build"
     fi
 }
 
@@ -308,6 +492,12 @@ main() {
     check_libimobiledevice_packages
     check_files
     check_pkg_config_query
+    
+    # 检查 CMake 配置问题（如果存在构建目录）
+    if [ -d "build" ] || [ -d "../build" ]; then
+        check_cmake_issues
+    fi
+    
     provide_installation_advice
     
     # 如果在交互模式下，提供自动安装选项
@@ -320,9 +510,15 @@ main() {
     echo "检查完成"
     echo "========================================="
     echo ""
+    echo "如果所有检查都通过但应用程序仍显示'libimobiledevice 不可用'："
+    echo "1. 确保环境变量已正确设置并重新开启终端"
+    echo "2. 清理并重新构建项目"
+    echo "3. 运行此脚本确认所有检查都通过"
+    echo ""
     echo "接下来可以运行:"
     echo "  ./build.sh build         - 构建项目"
     echo "  ./build.sh check-deps    - 再次检查依赖"
+    echo "  ./scripts/check-deps.sh  - 运行完整的依赖诊断"
 }
 
 # 运行主函数

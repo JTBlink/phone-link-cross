@@ -2,7 +2,7 @@
 #include <QDebug>
 
 #ifdef HAVE_LIBIMOBILEDEVICE
-#include <libplist/plist.h>
+#include <plist/plist.h>
 #endif
 
 QVariantMap DeviceInfo::toMap() const
