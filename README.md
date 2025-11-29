@@ -2,7 +2,7 @@
 
 [![CMake Multi-Platform Build](https://github.com/JTBlink/phone-link-cross/workflows/CMake%20Multi-Platform%20Build/badge.svg)](https://github.com/JTBlink/phone-link-cross/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Qt Version](https://img.shields.io/badge/Qt-6.5+-blue.svg)](https://www.qt.io)
+[![Qt Version](https://img.shields.io/badge/Qt-6.6+-blue.svg)](https://www.qt.io)
 
 > 基于 libimobiledevice 和 Apple Mobile Device Support 的跨平台 iOS 设备管理工具
 
@@ -75,7 +75,7 @@ phone-link-cross/
 
 ### 必需依赖
 
-- **Qt 6.5+** - 图形界面框架
+- **Qt 6.6+** - 图形界面框架
 - **CMake 3.19+** - 构建系统
 - **C++17** 编译器
 
@@ -204,9 +204,9 @@ qDebug() << "iOS版本:" << info.productVersion;
 
 访问 [Releases](../../releases) 页面下载适合您平台的预编译版本：
 
-- **Linux**: `phone-linkc` (需要安装 Qt 6.5+ 和 libimobiledevice)
-- **macOS**: `phone-linkc.app` (需要安装 Qt 6.5+ 和 libimobiledevice)  
-- **Windows**: `phone-linkc.exe` (需要安装 Qt 6.5+，模拟模式)
+- **Linux**: `phone-linkc` (需要安装 Qt 6.6+ 和 libimobiledevice)
+- **macOS**: `phone-linkc.app` (需要安装 Qt 6.6+ 和 libimobiledevice)  
+- **Windows**: `phone-linkc.exe` (需要安装 Qt 6.6+，模拟模式)
 
 ### 创建发布版本
 
@@ -245,7 +245,7 @@ git push origin v1.0.0
 
 1. **Qt 找不到**: 确保 Qt 已正确安装并添加到 PATH
 2. **libimobiledevice 找不到**: 安装相应开发包，或使用模拟模式
-3. **编译错误**: 检查 Qt 版本 (需要 6.5+) 和 CMake 版本 (需要 3.19+)
+3. **编译错误**: 检查 Qt 版本 (需要 6.6+) 和 CMake 版本 (需要 3.19+)
 
 ### 获取帮助
 

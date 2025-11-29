@@ -5,7 +5,7 @@ project(phone-linkc LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network)
+find_package(Qt6 6.6 REQUIRED COMPONENTS Core Widgets Network)
 
 # 查找 libimobiledevice（可选）
 find_package(PkgConfig QUIET)

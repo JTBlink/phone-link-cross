@@ -64,25 +64,19 @@ jobs:
       run: |
         echo "build-output-dir=${{ github.workspace }}/phone-linkc/build" >> "$GITHUB_OUTPUT"
 
-    - name: Install Qt (Ubuntu)
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y qt6-base-dev qt6-tools-dev libgl1-mesa-dev
-
-    - name: Install Qt (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        brew install qt6
-
-    - name: Install Qt (Windows)
-      if: runner.os == 'Windows'
-      uses: jurplel/install-qt-action@v3
+    - name: Install Qt (All Platforms)
+      uses: jurplel/install-qt-action@v4
       with:
         version: '6.6.0'
-        host: 'windows'
+        host: ${{ runner.os == 'Windows' && 'windows' || runner.os == 'macOS' && 'mac' || 'linux' }}
         target: 'desktop'
-        arch: 'win64_msvc2019_64'
+        arch: |
+          ${{ runner.os == 'Windows' && 'win64_msvc2019_64' || 
+              runner.os == 'macOS' && 'clang_64' || 
+              'gcc_64' }}
+        modules: 'qtnetworkauth'
+        setup-python: 'false'
+        cache: true
 
     - name: Install libimobiledevice (Ubuntu)
       if: runner.os == 'Linux'
