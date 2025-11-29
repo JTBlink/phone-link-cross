@@ -10,6 +10,7 @@ find_package(Qt6 6.6 REQUIRED COMPONENTS Core Widgets Network)
 # 查找 libimobiledevice（可选）
 find_package(PkgConfig QUIET)
 set(LIBIMOBILEDEVICE_AVAILABLE FALSE)
+
 if(PKG_CONFIG_FOUND)
     pkg_check_modules(IMOBILEDEVICE QUIET libimobiledevice-1.0)
     pkg_check_modules(PLIST QUIET libplist-2.0)
@@ -17,6 +18,37 @@ if(PKG_CONFIG_FOUND)
     
     if(IMOBILEDEVICE_FOUND AND PLIST_FOUND)
         set(LIBIMOBILEDEVICE_AVAILABLE TRUE)
+    endif()
+endif()
+
+# macOS 特定处理：如果 pkg-config 没找到，尝试直接使用 Homebrew 路径
+if(APPLE AND NOT LIBIMOBILEDEVICE_AVAILABLE)
+    message(STATUS "尝试使用 Homebrew 路径查找 libimobiledevice...")
+    
+    # 尝试查找 Homebrew 安装的库
+    execute_process(
+        COMMAND brew --prefix
+        OUTPUT_VARIABLE HOMEBREW_PREFIX
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    
+    # 检查头文件和库文件是否存在
+    if(EXISTS "${HOMEBREW_PREFIX}/include/libimobiledevice/libimobiledevice.h" AND
+       EXISTS "${HOMEBREW_PREFIX}/include/libplist/plist.h")
+        
+        set(IMOBILEDEVICE_INCLUDE_DIRS "${HOMEBREW_PREFIX}/include")
+        set(PLIST_INCLUDE_DIRS "${HOMEBREW_PREFIX}/include")
+        
+        # 设置库路径
+        set(IMOBILEDEVICE_LIBRARIES "-L${HOMEBREW_PREFIX}/lib -limobiledevice")
+        set(PLIST_LIBRARIES "-L${HOMEBREW_PREFIX}/lib -lplist")
+        
+        set(LIBIMOBILEDEVICE_AVAILABLE TRUE)
+        message(STATUS "通过 Homebrew 路径找到 libimobiledevice")
+        message(STATUS "  - Homebrew prefix: ${HOMEBREW_PREFIX}")
+        message(STATUS "  - Include dirs: ${IMOBILEDEVICE_INCLUDE_DIRS}")
+    else()
+        message(STATUS "Homebrew 路径下未找到 libimobiledevice")
     endif()
 endif()
 
