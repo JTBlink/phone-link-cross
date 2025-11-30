@@ -10,20 +10,16 @@
 
 DeviceManager::DeviceManager(QObject *parent)
     : QObject(parent)
-    , m_discoveryTimer(new QTimer(this))
     , m_isConnected(false)
 #ifdef HAVE_LIBIMOBILEDEVICE
     , m_device(nullptr)
     , m_lockdown(nullptr)
+    , m_eventContext(nullptr)
 #endif
 {
-    // 设置发现定时器
-    m_discoveryTimer->setInterval(2000); // 2秒检查一次
-    connect(m_discoveryTimer, &QTimer::timeout, this, &DeviceManager::checkDevices);
-    
     qDebug() << "DeviceManager 已创建";
 #ifdef HAVE_LIBIMOBILEDEVICE
-    qDebug() << "libimobiledevice 支持已启用";
+    qDebug() << "libimobiledevice 支持已启用 - 事件驱动模式";
 #else
     qDebug() << "libimobiledevice 不可用，无法连接 iOS 设备";
 #endif
@@ -40,14 +36,49 @@ DeviceManager::~DeviceManager()
 void DeviceManager::startDiscovery()
 {
     qDebug() << "开始设备发现...";
-    m_discoveryTimer->start();
-    checkDevices(); // 立即检查一次
+#ifdef HAVE_LIBIMOBILEDEVICE
+    // 先扫描一次现有设备
+    scanCurrentDevices();
+    
+    // 如果有设备连接，才启用事件订阅
+    if (!m_knownDevices.isEmpty()) {
+        startEventSubscription();
+        qDebug() << "发现" << m_knownDevices.size() << "台设备，启用事件监听";
+    } else {
+        qDebug() << "未发现任何设备，暂停设备发现。连接设备或点击刷新重新开始";
+    }
+#else
+    qDebug() << "libimobiledevice 不可用，无法连接 iOS 设备";
+#endif
 }
 
 void DeviceManager::stopDiscovery()
 {
     qDebug() << "停止设备发现";
-    m_discoveryTimer->stop();
+#ifdef HAVE_LIBIMOBILEDEVICE
+    stopEventSubscription();
+#endif
+}
+
+void DeviceManager::refreshDevices()
+{
+    qDebug() << "手动刷新设备列表";
+#ifdef HAVE_LIBIMOBILEDEVICE
+    scanCurrentDevices();
+    
+    // 如果刷新后发现了设备，且还没有订阅事件，则启动事件订阅
+    if (!m_knownDevices.isEmpty() && !m_eventContext) {
+        startEventSubscription();
+        qDebug() << "发现" << m_knownDevices.size() << "台设备，启用事件监听";
+    } else if (m_knownDevices.isEmpty() && m_eventContext) {
+        // 如果没有设备了，停止事件订阅
+        stopEventSubscription();
+        qDebug() << "未发现任何设备，暂停设备发现。连接设备后再次点击刷新";
+    } else if (m_knownDevices.isEmpty() && !m_eventContext) {
+        // 如果依然没有设备且未监听
+        qDebug() << "未发现任何设备，暂停设备发现。连接设备后再次点击刷新";
+    }
+#endif
 }
 
 QStringList DeviceManager::getConnectedDevices() const
@@ -55,7 +86,7 @@ QStringList DeviceManager::getConnectedDevices() const
     return m_knownDevices;
 }
 
-void DeviceManager::checkDevices()
+void DeviceManager::scanCurrentDevices()
 {
 #ifdef HAVE_LIBIMOBILEDEVICE
     char **device_list = nullptr;
@@ -63,7 +94,7 @@ void DeviceManager::checkDevices()
     
     // 获取设备列表
     if (idevice_get_device_list(&device_list, &device_count) != IDEVICE_E_SUCCESS) {
-        qWarning() << "无法获取设备列表";
+        qDebug() << "获取设备列表失败";
         return;
     }
 
@@ -101,7 +132,7 @@ void DeviceManager::checkDevices()
     idevice_device_list_free(device_list);
 #else
     // 没有 libimobiledevice 支持，无法检测设备
-    // 不显示弹窗提示，用户界面会显示相应的信息
+    qDebug() << "libimobiledevice 不可用，无法扫描设备";
 #endif
 }
 
@@ -144,6 +175,7 @@ void DeviceManager::disconnectFromDevice()
         qDebug() << "已断开设备连接:" << udid;
     }
 }
+
 
 #ifdef HAVE_LIBIMOBILEDEVICE
 bool DeviceManager::initializeConnection(const QString &udid)
@@ -196,6 +228,9 @@ QString DeviceManager::getDeviceName(const QString &udid)
 
 void DeviceManager::cleanup()
 {
+    // 停止事件订阅
+    stopEventSubscription();
+    
     if (m_lockdown) {
         lockdownd_client_free(m_lockdown);
         m_lockdown = nullptr;
@@ -204,6 +239,84 @@ void DeviceManager::cleanup()
     if (m_device) {
         idevice_free(m_device);
         m_device = nullptr;
+    }
+}
+
+void DeviceManager::startEventSubscription()
+{
+    if (m_eventContext) {
+        return; // 已经订阅了
+    }
+    
+    idevice_subscription_context_t context = nullptr;
+    // 使用lambda或函数指针来匹配正确的回调签名
+    auto callback = [](const idevice_event_t* event, void* user_data) -> void {
+        DeviceManager::deviceEventCallback(event, user_data);
+    };
+    
+    idevice_error_t ret = idevice_events_subscribe(&context, callback, this);
+    if (ret == IDEVICE_E_SUCCESS) {
+        m_eventContext = static_cast<idevice_subscription_context_ptr>(context);
+        qDebug() << "成功订阅 USB 设备事件通知 - 纯事件驱动模式";
+    } else {
+        qDebug() << "订阅 USB 设备事件失败";
+        m_eventContext = nullptr;
+    }
+}
+
+void DeviceManager::stopEventSubscription()
+{
+    if (m_eventContext) {
+        idevice_subscription_context_t context = static_cast<idevice_subscription_context_t>(m_eventContext);
+        idevice_events_unsubscribe(context);
+        m_eventContext = nullptr;
+        qDebug() << "已停止 USB 设备事件订阅";
+    }
+}
+
+void DeviceManager::deviceEventCallback(const void* event, void* user_data)
+{
+    const idevice_event_t* device_event = static_cast<const idevice_event_t*>(event);
+    DeviceManager* manager = static_cast<DeviceManager*>(user_data);
+    
+    if (!manager || !device_event) {
+        return;
+    }
+    
+    QString udid = QString::fromUtf8(device_event->udid);
+    
+    if (device_event->event == IDEVICE_DEVICE_ADD) {
+        qDebug() << "USB 事件：设备连接" << udid;
+        
+        // 直接处理设备连接事件
+        if (!manager->m_knownDevices.contains(udid)) {
+            QString deviceName = manager->getDeviceName(udid);
+            manager->m_knownDevices << udid;
+            emit manager->deviceFound(udid, deviceName);
+        }
+        
+    } else if (device_event->event == IDEVICE_DEVICE_REMOVE) {
+        qDebug() << "USB 事件：设备断开" << udid;
+        
+        // 从已知设备列表中移除
+        if (manager->m_knownDevices.contains(udid)) {
+            manager->m_knownDevices.removeAll(udid);
+            emit manager->deviceLost(udid);
+            
+            // 如果是当前连接的设备断开了
+            if (udid == manager->m_currentUdid) {
+                manager->disconnectFromDevice();
+            }
+        }
+        
+    } else if (device_event->event == IDEVICE_DEVICE_PAIRED) {
+        qDebug() << "USB 事件：设备配对" << udid;
+        // 设备配对后直接处理
+        if (!manager->m_knownDevices.contains(udid)) {
+            QString deviceName = manager->getDeviceName(udid);
+            manager->m_knownDevices << udid;
+            emit manager->deviceFound(udid, deviceName);
+        }
     }
 }
 #endif
