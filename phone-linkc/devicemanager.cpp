@@ -78,6 +78,8 @@ void DeviceManager::refreshDevices()
         // 如果依然没有设备且未监听
         qDebug() << "未发现任何设备，暂停设备发现。连接设备后再次点击刷新";
     }
+#else
+    qDebug() << "libimobiledevice 不可用，无法刷新 iOS 设备";
 #endif
 }
 
