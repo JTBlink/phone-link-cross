@@ -251,14 +251,15 @@ void DeviceManager::startEventSubscription()
     }
     
     idevice_subscription_context_t context = nullptr;
-    // 使用lambda或函数指针来匹配正确的回调签名
-    auto callback = [](const idevice_event_t* event, void* user_data) -> void {
-        DeviceManager::deviceEventCallback(event, user_data);
+    
+    // Use a lambda wrapper to match the expected callback signature
+    auto callback_wrapper = [](const idevice_event_t* event, void* user_data) -> void {
+        deviceEventCallback(event, user_data);
     };
     
-    idevice_error_t ret = idevice_events_subscribe(&context, callback, this);
+    idevice_error_t ret = idevice_events_subscribe(&context, callback_wrapper, this);
     if (ret == IDEVICE_E_SUCCESS) {
-        m_eventContext = static_cast<idevice_subscription_context_ptr>(context);
+        m_eventContext = context;
         qDebug() << "成功订阅 USB 设备事件通知 - 纯事件驱动模式";
     } else {
         qDebug() << "订阅 USB 设备事件失败";

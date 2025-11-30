@@ -11,8 +11,8 @@ typedef struct idevice_private idevice_private;
 typedef idevice_private* idevice_t;
 typedef struct lockdownd_client_private lockdownd_client_private;
 typedef lockdownd_client_private* lockdownd_client_t;
-// 使用 void* 来避免类型冲突
-typedef void* idevice_subscription_context_ptr;
+// Forward declare the subscription context
+typedef struct idevice_subscription_context* idevice_subscription_context_t;
 #endif
 
 class DeviceManager : public QObject
@@ -51,7 +51,7 @@ private:
 #ifdef HAVE_LIBIMOBILEDEVICE
     idevice_t m_device;
     lockdownd_client_t m_lockdown;
-    idevice_subscription_context_ptr m_eventContext;
+    idevice_subscription_context_t m_eventContext;
     
     bool initializeConnection(const QString &udid);
     QString getDeviceName(const QString &udid);
