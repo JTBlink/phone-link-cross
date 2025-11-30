@@ -105,25 +105,64 @@ jobs:
         echo "CMAKE_INCLUDE_PATH=${HOMEBREW_PREFIX}/include" >> $GITHUB_ENV
         echo "CMAKE_LIBRARY_PATH=${HOMEBREW_PREFIX}/lib" >> $GITHUB_ENV
         
+        # 验证安装并设置正确的包含路径
+        echo "验证 libimobiledevice 安装..."
+        echo "Homebrew prefix: ${HOMEBREW_PREFIX}"
+        
+        # 验证 pkg-config 是否能找到库
+        if pkg-config --exists libimobiledevice-1.0; then
+          echo "✓ pkg-config can find libimobiledevice-1.0"
+          echo "libimobiledevice cflags: $(pkg-config --cflags libimobiledevice-1.0)"
+          echo "libimobiledevice libs: $(pkg-config --libs libimobiledevice-1.0)"
+        else
+          echo "✗ pkg-config cannot find libimobiledevice-1.0"
+        fi
+        
+        if pkg-config --exists libplist-2.0; then
+          echo "✓ pkg-config can find libplist-2.0"
+          echo "libplist cflags: $(pkg-config --cflags libplist-2.0)"
+          echo "libplist libs: $(pkg-config --libs libplist-2.0)"
+        else
+          echo "✗ pkg-config cannot find libplist-2.0"
+        fi
+        
         # 验证头文件是否存在
         echo "验证 libimobiledevice 头文件..."
         if [ -f "${HOMEBREW_PREFIX}/include/libimobiledevice/libimobiledevice.h" ]; then
           echo "✓ libimobiledevice.h found at ${HOMEBREW_PREFIX}/include/libimobiledevice/"
         else
-          echo "✗ libimobiledevice.h not found"
-          echo "检查路径: ${HOMEBREW_PREFIX}/include/libimobiledevice/"
+          echo "✗ libimobiledevice.h not found at ${HOMEBREW_PREFIX}/include/libimobiledevice/"
+          # 查找 Cellar 位置
+          find ${HOMEBREW_PREFIX}/Cellar/libimobiledevice -name "libimobiledevice.h" 2>/dev/null | head -1 | while read header; do
+            echo "✓ libimobiledevice.h found at: $header"
+          done
         fi
         
-        if [ -f "${HOMEBREW_PREFIX}/include/libplist/plist.h" ]; then
-          echo "✓ plist.h found at ${HOMEBREW_PREFIX}/include/libplist/"
+        if [ -f "${HOMEBREW_PREFIX}/include/plist/plist.h" ]; then
+          echo "✓ plist.h found at ${HOMEBREW_PREFIX}/include/plist/"
         else
-          echo "✗ plist.h not found"
-          echo "检查路径: ${HOMEBREW_PREFIX}/include/libplist/"
+          echo "✗ plist.h not found at ${HOMEBREW_PREFIX}/include/plist/"
+          # 查找 Cellar 位置
+          find ${HOMEBREW_PREFIX}/Cellar/libplist -name "plist.h" 2>/dev/null | head -1 | while read header; do
+            echo "✓ plist.h found at: $header"
+          done
         fi
         
-        # 查找所有可能的头文件位置
-        echo "查找所有 plist.h 文件位置..."
-        find ${HOMEBREW_PREFIX} -name "plist.h" 2>/dev/null || true
+        # 验证库文件
+        echo "验证库文件..."
+        if [ -f "${HOMEBREW_PREFIX}/lib/libimobiledevice-1.0.dylib" ]; then
+          echo "✓ libimobiledevice-1.0.dylib found"
+        else
+          echo "✗ libimobiledevice-1.0.dylib not found"
+          find ${HOMEBREW_PREFIX} -name "*imobiledevice*.dylib" 2>/dev/null | head -3
+        fi
+        
+        if [ -f "${HOMEBREW_PREFIX}/lib/libplist-2.0.dylib" ]; then
+          echo "✓ libplist-2.0.dylib found"
+        else
+          echo "✗ libplist-2.0.dylib not found"
+          find ${HOMEBREW_PREFIX} -name "*plist*.dylib" 2>/dev/null | head -3
+        fi
 
     # Note: libimobiledevice is not easily available on Windows
     # The Windows build will use simulation mode

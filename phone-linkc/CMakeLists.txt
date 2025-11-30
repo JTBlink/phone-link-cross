@@ -40,7 +40,12 @@ if(APPLE AND NOT LIBIMOBILEDEVICE_AVAILABLE)
         if(BREW_RESULT EQUAL 0)
             message(STATUS "使用 brew --prefix 找到路径: ${HOMEBREW_PREFIX}")
         else()
-            set(HOMEBREW_PREFIX "/usr/local")
+            # ARM64 macOS 默认使用 /opt/homebrew，Intel macOS 使用 /usr/local
+            if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64")
+                set(HOMEBREW_PREFIX "/opt/homebrew")
+            else()
+                set(HOMEBREW_PREFIX "/usr/local")
+            endif()
             message(STATUS "brew 命令失败，使用默认路径: ${HOMEBREW_PREFIX}")
         endif()
     endif()
@@ -51,30 +56,63 @@ if(APPLE AND NOT LIBIMOBILEDEVICE_AVAILABLE)
     set(IDEVICE_HEADER_FOUND FALSE)
     set(PLIST_HEADER_FOUND FALSE)
     
+    # 先检查标准位置
     if(EXISTS "${HOMEBREW_PREFIX}/include/libimobiledevice/libimobiledevice.h")
         set(IDEVICE_HEADER_FOUND TRUE)
         message(STATUS "✓ libimobiledevice.h found at ${HOMEBREW_PREFIX}/include/libimobiledevice/")
     else()
-        message(STATUS "✗ libimobiledevice.h not found at ${HOMEBREW_PREFIX}/include/libimobiledevice/")
+        # 查找 Cellar 位置
+        file(GLOB IMOBILEDEVICE_CELLAR_DIRS "${HOMEBREW_PREFIX}/Cellar/libimobiledevice/*/include")
+        foreach(cellar_dir ${IMOBILEDEVICE_CELLAR_DIRS})
+            if(EXISTS "${cellar_dir}/libimobiledevice/libimobiledevice.h")
+                set(IDEVICE_HEADER_FOUND TRUE)
+                message(STATUS "✓ libimobiledevice.h found at ${cellar_dir}/libimobiledevice/")
+                break()
+            endif()
+        endforeach()
     endif()
     
+    # 检查 plist 头文件
     if(EXISTS "${HOMEBREW_PREFIX}/include/plist/plist.h")
         set(PLIST_HEADER_FOUND TRUE)
         message(STATUS "✓ plist.h found at ${HOMEBREW_PREFIX}/include/plist/")
     else()
-        message(STATUS "✗ plist.h not found at ${HOMEBREW_PREFIX}/include/plist/")
+        # 查找 Cellar 位置
+        file(GLOB PLIST_CELLAR_DIRS "${HOMEBREW_PREFIX}/Cellar/libplist/*/include")
+        foreach(cellar_dir ${PLIST_CELLAR_DIRS})
+            if(EXISTS "${cellar_dir}/plist/plist.h")
+                set(PLIST_HEADER_FOUND TRUE)
+                message(STATUS "✓ plist.h found at ${cellar_dir}/plist/")
+                break()
+            endif()
+        endforeach()
     endif()
     
     if(IDEVICE_HEADER_FOUND AND PLIST_HEADER_FOUND)
-        # 设置包含目录
+        # 设置包含目录 - 既包括标准位置也包括 Cellar 位置
         set(IMOBILEDEVICE_INCLUDE_DIRS "${HOMEBREW_PREFIX}/include")
         set(PLIST_INCLUDE_DIRS "${HOMEBREW_PREFIX}/include")
         set(USBMUXD_INCLUDE_DIRS "${HOMEBREW_PREFIX}/include")
         
+        # 如果头文件在 Cellar 中，也添加那些路径
+        file(GLOB IMOBILEDEVICE_CELLAR_DIRS "${HOMEBREW_PREFIX}/Cellar/libimobiledevice/*/include")
+        file(GLOB PLIST_CELLAR_DIRS "${HOMEBREW_PREFIX}/Cellar/libplist/*/include")
+        file(GLOB USBMUXD_CELLAR_DIRS "${HOMEBREW_PREFIX}/Cellar/libusbmuxd/*/include")
+        
+        if(IMOBILEDEVICE_CELLAR_DIRS)
+            list(APPEND IMOBILEDEVICE_INCLUDE_DIRS ${IMOBILEDEVICE_CELLAR_DIRS})
+        endif()
+        if(PLIST_CELLAR_DIRS)
+            list(APPEND PLIST_INCLUDE_DIRS ${PLIST_CELLAR_DIRS})
+        endif()
+        if(USBMUXD_CELLAR_DIRS)
+            list(APPEND USBMUXD_INCLUDE_DIRS ${USBMUXD_CELLAR_DIRS})
+        endif()
+        
         # 设置库路径
-        set(IMOBILEDEVICE_LIBRARIES "-L${HOMEBREW_PREFIX}/lib -limobiledevice")
-        set(PLIST_LIBRARIES "-L${HOMEBREW_PREFIX}/lib -lplist")
-        set(USBMUXD_LIBRARIES "-L${HOMEBREW_PREFIX}/lib -lusbmuxd")
+        set(IMOBILEDEVICE_LIBRARIES "-L${HOMEBREW_PREFIX}/lib -limobiledevice-1.0")
+        set(PLIST_LIBRARIES "-L${HOMEBREW_PREFIX}/lib -lplist-2.0")
+        set(USBMUXD_LIBRARIES "-L${HOMEBREW_PREFIX}/lib -lusbmuxd-2.0")
         
         # 设置编译标志
         set(IMOBILEDEVICE_CFLAGS_OTHER "-I${HOMEBREW_PREFIX}/include")
@@ -158,19 +196,16 @@ if(LIBIMOBILEDEVICE_AVAILABLE)
         find_library(IMOBILEDEVICE_LIB
             NAMES imobiledevice-1.0 libimobiledevice-1.0
             PATHS ${HOMEBREW_PREFIX}/lib ${HOMEBREW_PREFIX}/Cellar/libimobiledevice/*/lib
-            NO_DEFAULT_PATH
         )
         
         find_library(PLIST_LIB
             NAMES plist-2.0 libplist-2.0
             PATHS ${HOMEBREW_PREFIX}/lib ${HOMEBREW_PREFIX}/Cellar/libplist/*/lib
-            NO_DEFAULT_PATH
         )
         
         find_library(USBMUXD_LIB
             NAMES usbmuxd-2.0 libusbmuxd-2.0
             PATHS ${HOMEBREW_PREFIX}/lib ${HOMEBREW_PREFIX}/Cellar/libusbmuxd/*/lib
-            NO_DEFAULT_PATH
         )
         
         message(STATUS "Found libraries:")
