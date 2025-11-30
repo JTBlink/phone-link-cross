@@ -157,19 +157,19 @@ if(LIBIMOBILEDEVICE_AVAILABLE)
         # 链接库 - 直接查找库文件
         find_library(IMOBILEDEVICE_LIB
             NAMES imobiledevice-1.0 libimobiledevice-1.0
-            PATHS /usr/local/lib /usr/local/Cellar/libimobiledevice/*/lib
+            PATHS ${HOMEBREW_PREFIX}/lib ${HOMEBREW_PREFIX}/Cellar/libimobiledevice/*/lib
             NO_DEFAULT_PATH
         )
         
         find_library(PLIST_LIB
             NAMES plist-2.0 libplist-2.0
-            PATHS /usr/local/lib /usr/local/Cellar/libplist/*/lib
+            PATHS ${HOMEBREW_PREFIX}/lib ${HOMEBREW_PREFIX}/Cellar/libplist/*/lib
             NO_DEFAULT_PATH
         )
         
         find_library(USBMUXD_LIB
             NAMES usbmuxd-2.0 libusbmuxd-2.0
-            PATHS /usr/local/lib /usr/local/Cellar/libusbmuxd/*/lib
+            PATHS ${HOMEBREW_PREFIX}/lib ${HOMEBREW_PREFIX}/Cellar/libusbmuxd/*/lib
             NO_DEFAULT_PATH
         )
         
