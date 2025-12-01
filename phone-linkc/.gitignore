@@ -35,10 +35,17 @@ Thumbs.db
 /.qmake.cache
 /.qmake.stash
 
-# qtcreator generated files
+# Qt Creator generated files
 *.pro.user*
 *.qbs.user*
 CMakeLists.txt.user*
+*.qtcreator
+*.qbs
+.qtc_clangd/
+
+# Qt build files
+*.qmake.cache
+*.qmake.stash
 
 # xemacs temporary files
 *.flc
@@ -60,10 +67,38 @@ CMakeLists.txt.user*
 *.opensdf
 *.vcxproj
 *vcxproj.*
+*.vspscc
+*.vssscc
+*.vssettings
+.vs/
+
+# Qt + Visual Studio integration
+*.vcxproj.filters
+*.vcxproj.user
+*.vcxproj.*.user
 
 # MinGW generated files
 *.Debug
 *.Release
+
+# Windows Qt specific files
+# Qt deployment and distribution
+*.manifest
+windeployqt/
+qt_deploy/
+
+# Qt Windows build artifacts
+debug/
+release/
+Debug/
+Release/
+x64/
+Win32/
+
+# Qt installer framework
+packages/*/data/
+packages/*/meta/installscript.qs~
+config/config.xml~
 
 # Python byte code
 *.pyc
@@ -72,6 +107,18 @@ CMakeLists.txt.user*
 # --------
 *.dll
 *.exe
+*.lib
+*.exp
+*.pdb
+*.ilk
+
+# Qt Windows binaries
+*d.dll
+*d.exe
+moc.exe
+uic.exe
+rcc.exe
+qmake.exe
 
 # Directories with generated files
 .moc/
