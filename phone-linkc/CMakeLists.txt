@@ -1,5 +1,22 @@
 cmake_minimum_required(VERSION 3.19)
-project(phone-linkc LANGUAGES CXX)
+
+# 禁用 Qt Creator 的 package manager auto-setup
+# 这些设置必须在 project() 之前
+set(QT_CREATOR_SKIP_PACKAGE_MANAGER_SETUP TRUE CACHE BOOL "" FORCE)
+set(QT_NO_PACKAGE_MANAGER_AUTO_SETUP ON CACHE BOOL "" FORCE)
+
+# 如果存在 auto-setup.cmake 路径但文件不存在，则创建一个空的
+if(DEFINED CMAKE_PROJECT_INCLUDE_BEFORE)
+    if(NOT EXISTS "${CMAKE_PROJECT_INCLUDE_BEFORE}")
+        get_filename_component(_setup_dir "${CMAKE_PROJECT_INCLUDE_BEFORE}" DIRECTORY)
+        if(NOT EXISTS "${_setup_dir}")
+            file(MAKE_DIRECTORY "${_setup_dir}")
+        endif()
+        file(WRITE "${CMAKE_PROJECT_INCLUDE_BEFORE}" "# Auto-generated empty file\n")
+    endif()
+endif()
+
+project(phone-linkc LANGUAGES C CXX)
 
 # 设置 C++ 标准
 set(CMAKE_CXX_STANDARD 17)
