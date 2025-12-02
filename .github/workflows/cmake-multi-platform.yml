@@ -32,12 +32,6 @@ jobs:
           - os: windows-latest
             c_compiler: cl
             cpp_compiler: cl
-          - os: ubuntu-latest
-            c_compiler: gcc
-            cpp_compiler: g++
-          - os: ubuntu-latest
-            c_compiler: clang
-            cpp_compiler: clang++
           - os: macos-latest
             c_compiler: clang
             cpp_compiler: clang++
@@ -46,8 +40,6 @@ jobs:
             c_compiler: gcc
           - os: windows-latest
             c_compiler: clang
-          - os: ubuntu-latest
-            c_compiler: cl
           - os: macos-latest
             c_compiler: cl
           - os: macos-latest
@@ -229,7 +221,6 @@ jobs:
         path: |
           ${{ steps.strings.outputs.build-output-dir }}/phone-linkc
           ${{ steps.strings.outputs.build-output-dir }}/*.qm
-        include-attestations: true
 
     - name: Upload build artifacts (macOS)
       if: runner.os == 'macOS'
@@ -238,7 +229,6 @@ jobs:
         name: phone-linkc-macos-x64
         path: |
           ${{ steps.strings.outputs.build-output-dir }}/phone-linkc.app
-        include-attestations: true
 
     - name: Upload build artifacts (Windows)
       if: runner.os == 'Windows'
@@ -249,7 +239,6 @@ jobs:
           ${{ steps.strings.outputs.build-output-dir }}/Release/phone-linkc.exe
           ${{ steps.strings.outputs.build-output-dir }}/Debug/phone-linkc.exe
           ${{ steps.strings.outputs.build-output-dir }}/*.qm
-        include-attestations: true
 
   # Optional: Create a release when pushing a tag
   release:
