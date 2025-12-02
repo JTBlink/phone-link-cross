@@ -88,9 +88,9 @@ QStringList DeviceManager::getConnectedDevices() const
     return m_knownDevices;
 }
 
+#ifdef HAVE_LIBIMOBILEDEVICE
 void DeviceManager::scanCurrentDevices()
 {
-#ifdef HAVE_LIBIMOBILEDEVICE
     char **device_list = nullptr;
     int device_count = 0;
     
@@ -132,11 +132,8 @@ void DeviceManager::scanCurrentDevices()
     
     // 清理设备列表
     idevice_device_list_free(device_list);
-#else
-    // 没有 libimobiledevice 支持，无法检测设备
-    qDebug() << "libimobiledevice 不可用，无法扫描设备";
-#endif
 }
+#endif
 
 bool DeviceManager::connectToDevice(const QString &udid)
 {
