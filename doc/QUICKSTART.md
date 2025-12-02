@@ -78,6 +78,46 @@ open "/Applications/Qt Creator.app"  # macOS
 - 手动添加 Qt bin 目录到 PATH 环境变量
 - 运行脚本时选择自动配置环境变量
 
+#### 通过系统环境变量永久设置（Windows）
+如果脚本未能自动配置环境变量，可以手动设置：
+
+1. **打开系统属性**
+   - 右键点击"此电脑"
+   - 选择"属性"
+   - 点击"高级系统设置"
+
+2. **设置环境变量**
+   - 点击"环境变量"按钮
+   - 在"用户变量"或"系统变量"中找到"Path"
+   - 点击"编辑"
+
+3. **添加Qt路径**
+   - 点击"新建"
+   - 添加以下路径（根据实际安装路径调整）：
+     ```
+     D:\Qt\6.10.1\mingw_64\bin
+     D:\Qt\Tools\mingw1310_64\bin
+     D:\Qt\Tools\CMake_64\bin
+     ```
+
+4. **验证设置**
+   - 点击"确定"保存所有窗口
+   - 重新打开命令提示符
+   - 运行 `qmake --version` 验证
+
+#### 快速命令行设置（Windows临时）
+```cmd
+set PATH=D:\Qt\6.10.1\mingw_64\bin;D:\Qt\Tools\mingw1310_64\bin;D:\Qt\Tools\CMake_64\bin;%PATH%
+```
+
+#### macOS/Linux环境变量设置
+编辑shell配置文件（`~/.bashrc`, `~/.zshrc`, 或 `~/.profile`）：
+```bash
+export PATH="/opt/Qt/6.x.x/gcc_64/bin:$PATH"
+export PATH="/opt/Qt/Tools/CMake/bin:$PATH"
+```
+保存后运行 `source ~/.bashrc`（或对应的配置文件）。
+
 ### Q: 支持哪些系统架构？
 **A**: 
 - **Windows**: x86, x64

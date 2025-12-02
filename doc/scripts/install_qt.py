@@ -18,7 +18,9 @@ class QtInstaller:
     def __init__(self):
         self.system = platform.system().lower()
         self.arch = platform.machine().lower()
-        self.temp_dir = tempfile.mkdtemp(prefix='qt_installer_')
+        # Use user's Downloads directory instead of temp directory
+        self.download_dir = self.get_user_downloads_dir()
+        os.makedirs(self.download_dir, exist_ok=True)
         
         # Mirror configuration with fallbacks - updated with correct filenames
         self.mirrors = {
@@ -83,6 +85,22 @@ class QtInstaller:
                 ]
             }
         }
+        
+    def get_user_downloads_dir(self):
+        """Get user's Downloads directory path"""
+        if self.system == 'windows':
+            # Windows: Use USERPROFILE/Downloads
+            downloads_path = os.path.join(os.path.expanduser('~'), 'Downloads')
+        elif self.system == 'darwin':
+            # macOS: Use ~/Downloads
+            downloads_path = os.path.join(os.path.expanduser('~'), 'Downloads')
+        else:
+            # Linux: Try XDG_DOWNLOAD_DIR first, then ~/Downloads
+            downloads_path = os.environ.get('XDG_DOWNLOAD_DIR')
+            if not downloads_path:
+                downloads_path = os.path.join(os.path.expanduser('~'), 'Downloads')
+        
+        return downloads_path
         
     def print_info(self, message):
         print(f"[INFO] {message}")
@@ -229,12 +247,12 @@ class QtInstaller:
             self.print_info(f"export PATH=\"$PATH:{qt_path}\"")
             
     def cleanup(self):
-        """Clean up temporary files"""
+        """Clean up download files"""
         try:
-            shutil.rmtree(self.temp_dir)
-            self.print_info("Temporary files cleaned up")
+            shutil.rmtree(self.download_dir)
+            self.print_info("Download files cleaned up")
         except Exception as e:
-            self.print_warning(f"Failed to cleanup temp files: {str(e)}")
+            self.print_warning(f"Failed to cleanup download files: {str(e)}")
             
     def install(self):
         """Main installation process"""
@@ -263,7 +281,7 @@ class QtInstaller:
             # Get installer information with fallback mirrors
             mirrors_to_try = self.get_installer_info()
             installer_name = mirrors_to_try[0]['installer']
-            installer_path = os.path.join(self.temp_dir, installer_name)
+            installer_path = os.path.join(self.download_dir, installer_name)
             
             # Check if installer already exists
             if os.path.exists(installer_path):
@@ -340,7 +358,7 @@ class QtInstaller:
             if cleanup.lower() == 'y':
                 self.cleanup()
             else:
-                self.print_info(f"Temporary files kept at: {self.temp_dir}")
+                self.print_info(f"Download files kept at: {self.download_dir}")
                 
             print("\n" + "=" * 50)
             print("Qt Installation Completed!")
@@ -359,9 +377,9 @@ class QtInstaller:
             self.print_error(f"Installation failed: {str(e)}")
             return False
         finally:
-            # Always cleanup temp directory
-            if os.path.exists(self.temp_dir):
-                self.cleanup()
+            # Always cleanup download directory if needed
+            if hasattr(self, 'download_dir') and os.path.exists(self.download_dir):
+                pass  # Download directory is kept by default, cleanup only on user request
 
 def main():
     """Main entry point"""
