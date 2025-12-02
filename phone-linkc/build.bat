@@ -9,152 +9,288 @@ echo.
 REM Initialize compiler type variable
 set "COMPILER_TYPE="
 
-REM Detect MSVC toolchain
-echo Detecting MSVC toolchain...
-
-REM Try to find and configure MSVC
-call :detect_msvc
-if defined COMPILER_TYPE (
-    echo [INFO] MSVC toolchain detected and configured
-    goto configure_qt
-) else (
-    echo [ERROR] MSVC toolchain not found
-    echo [ERROR] Please install Visual Studio 2019/2022 with C++ support
-    goto end
-)
-
-:configure_qt
-REM Configure Qt MSVC environment
-REM Check for MSVC-compiled Qt versions
-if exist "D:\Qt\6.10.1\msvc2022_64\lib\cmake\Qt6\Qt6Config.cmake" (
-    set "PATH=D:\Qt\6.10.1\msvc2022_64\bin;!PATH!"
-    set "Qt6_DIR=D:\Qt\6.10.1\msvc2022_64\lib\cmake\Qt6"
-    echo [INFO] Qt 6.10.1 MSVC2022 64-bit configured
-    goto configure_cmake
-)
-
-
-echo [ERROR] No MSVC-compiled Qt installation found
-echo [ERROR] Please install Qt 6.x with MSVC2022 64-bit support
-echo [INFO] Download from: https://www.qt.io/download
-goto end
-
-:configure_cmake
-REM Configure Qt CMake environment (prioritize Qt's CMake)
-if exist "D:\Qt\Tools\CMake_64\bin\cmake.exe" (
-    set "PATH=D:\Qt\Tools\CMake_64\bin;!PATH!"
-    echo [INFO] Qt CMake configured
-)
+REM ===== Jump to main logic to avoid executing function definitions =====
 goto main_logic
 
-REM Function to detect MSVC compiler
+REM ===== Constants Definition =====
+
+:init_constants
+REM Visual Studio path constants
+set "VS2022_BASE=%ProgramFiles%\Microsoft Visual Studio\2022"
+set "VS2019_BASE=%ProgramFiles(x86)%\Microsoft Visual Studio\2019"
+set "VCVARS_SUFFIX=\VC\Auxiliary\Build\vcvarsall.bat"
+
+REM Qt path constants
+set "QT_BASE=D:\Qt\6.10.1\msvc2022_64"
+set "QT_CMAKE_TOOLS=D:\Qt\Tools\CMake_64\bin\cmake.exe"
+set "QT_WINDEPLOYQT=D:\Qt\6.10.1\msvc2022_64\bin\windeployqt.exe"
+
+REM Build config constants
+set "BUILD_CONFIG=Release"
+set "CMAKE_BUILD_TYPE=Release"
+goto :eof
+
+REM ===== Log Function Definitions =====
+
+REM Info log
+:log_info
+echo [INFO] %~1
+goto :eof
+
+REM Error log
+:log_error
+echo [ERROR] %~1
+goto :eof
+
+REM Success log
+:log_success
+echo [SUCCESS] %~1
+goto :eof
+
+REM OK log
+:log_ok
+echo [OK] %~1
+goto :eof
+
+REM Warning log
+:log_warning
+echo [WARNING] %~1
+goto :eof
+
+REM Indented info log
+:log_info_indent
+echo     %~1
+goto :eof
+
+REM Message log
+:log_message
+echo %~1
+goto :eof
+
+REM New line
+:log_newline
+echo.
+goto :eof
+
+:main_logic
+if "%1"=="check-deps" goto check_deps
+if "%1"=="help" goto show_help  
+if "%1"=="" goto init_build
+goto show_help
+
+REM ===== Common Function Definitions =====
+
+REM Try to configure specified Visual Studio version
+REM Parameters: %1=base path, %2=edition name, %3=CMake generator, %4=architecture
+:try_configure_vs
+set "VCVARS_PATH=%~1\%~2%VCVARS_SUFFIX%"
+if exist "%VCVARS_PATH%" (
+    call "%VCVARS_PATH%" x64 >nul 2>&1
+    set "COMPILER_TYPE=MSVC"
+    set "CMAKE_GENERATOR=%~3"
+    set "CMAKE_ARCH=%~4"
+    call :log_info "%~2 detected"
+    exit /b 0
+)
+exit /b 1
+
+REM MSVC compiler detection function
 :detect_msvc
-REM Check if Visual Studio is available through vcvarsall.bat
-if exist "%ProgramFiles%\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat" (
-    call "%ProgramFiles%\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat" x64 >nul 2>&1
-    set "COMPILER_TYPE=MSVC"
-    set "CMAKE_GENERATOR=Visual Studio 17 2022"
-    set "CMAKE_ARCH=-A x64"
-    echo [INFO] Visual Studio 2022 Professional detected
-    goto :eof
-)
+REM Initialize constants
+call :init_constants
 
-if exist "%ProgramFiles%\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" (
-    call "%ProgramFiles%\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64 >nul 2>&1
-    set "COMPILER_TYPE=MSVC"
-    set "CMAKE_GENERATOR=Visual Studio 17 2022"
-    set "CMAKE_ARCH=-A x64"
-    echo [INFO] Visual Studio 2022 Community detected
-    goto :eof
-)
+REM Try Visual Studio 2022 editions
+call :try_configure_vs "%VS2022_BASE%" "Professional" "Visual Studio 17 2022" "-A x64"
+if !errorlevel!==0 goto :eof
 
-if exist "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" (
-    call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64 >nul 2>&1
-    set "COMPILER_TYPE=MSVC"
-    set "CMAKE_GENERATOR=Visual Studio 17 2022"
-    set "CMAKE_ARCH=-A x64"
-    echo [INFO] Visual Studio 2022 Enterprise detected
-    goto :eof
-)
+call :try_configure_vs "%VS2022_BASE%" "Community" "Visual Studio 17 2022" "-A x64"
+if !errorlevel!==0 goto :eof
 
-if exist "%ProgramFiles(x86)%\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat" (
-    call "%ProgramFiles(x86)%\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat" x64 >nul 2>&1
-    set "COMPILER_TYPE=MSVC"
-    set "CMAKE_GENERATOR=Visual Studio 16 2019"
-    set "CMAKE_ARCH=-A x64"
-    echo [INFO] Visual Studio 2019 Professional detected
-    goto :eof
-)
+call :try_configure_vs "%VS2022_BASE%" "Enterprise" "Visual Studio 17 2022" "-A x64"
+if !errorlevel!==0 goto :eof
 
-if exist "%ProgramFiles(x86)%\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat" (
-    call "%ProgramFiles(x86)%\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat" x64 >nul 2>&1
-    set "COMPILER_TYPE=MSVC"
-    set "CMAKE_GENERATOR=Visual Studio 16 2019"
-    set "CMAKE_ARCH=-A x64"
-    echo [INFO] Visual Studio 2019 Community detected
-    goto :eof
-)
+REM Try Visual Studio 2019 editions
+call :try_configure_vs "%VS2019_BASE%" "Professional" "Visual Studio 16 2019" "-A x64"
+if !errorlevel!==0 goto :eof
 
-REM Check if cl.exe is directly available (Build Tools or already configured environment)
+call :try_configure_vs "%VS2019_BASE%" "Community" "Visual Studio 16 2019" "-A x64"
+if !errorlevel!==0 goto :eof
+
+REM Check if cl.exe is directly available
 where cl >nul 2>&1
 if !errorlevel!==0 (
     set "COMPILER_TYPE=MSVC"
     set "CMAKE_GENERATOR=NMake Makefiles"
     set "CMAKE_ARCH="
-    echo [INFO] MSVC compiler (cl.exe) found in PATH
+    call :log_info "MSVC compiler (cl.exe) found in PATH"
 )
 goto :eof
 
+REM CMake configuration function
+:run_cmake_configure
+call :init_constants
+echo [INFO] Executing CMake configuration:
+if "%CMAKE_GENERATOR%"=="Visual Studio 17 2022" (
+    echo [INFO]   cmake .. -G "%CMAKE_GENERATOR%" %CMAKE_ARCH% -DCMAKE_BUILD_TYPE=%CMAKE_BUILD_TYPE% -DQt6_DIR="%Qt6_DIR%"
+    cmake .. -G "%CMAKE_GENERATOR%" %CMAKE_ARCH% -DCMAKE_BUILD_TYPE=%CMAKE_BUILD_TYPE% -DQt6_DIR="%Qt6_DIR%"
+) else if "%CMAKE_GENERATOR%"=="Visual Studio 16 2019" (
+    echo [INFO]   cmake .. -G "%CMAKE_GENERATOR%" %CMAKE_ARCH% -DCMAKE_BUILD_TYPE=%CMAKE_BUILD_TYPE% -DQt6_DIR="%Qt6_DIR%"
+    cmake .. -G "%CMAKE_GENERATOR%" %CMAKE_ARCH% -DCMAKE_BUILD_TYPE=%CMAKE_BUILD_TYPE% -DQt6_DIR="%Qt6_DIR%"
+) else (
+    echo [INFO]   cmake .. -G "%CMAKE_GENERATOR%" -DCMAKE_BUILD_TYPE=%CMAKE_BUILD_TYPE% -DQt6_DIR="%Qt6_DIR%"
+    cmake .. -G "%CMAKE_GENERATOR%" -DCMAKE_BUILD_TYPE=%CMAKE_BUILD_TYPE% -DQt6_DIR="%Qt6_DIR%"
+)
+goto :eof
 
-:main_logic
+REM CMake build function
+:run_cmake_build
+call :init_constants
+echo [INFO] Executing CMake build:
+if "%CMAKE_GENERATOR%"=="Visual Studio 17 2022" (
+    echo [INFO]   cmake --build . --config %BUILD_CONFIG% --parallel
+    cmake --build . --config %BUILD_CONFIG% --parallel
+) else if "%CMAKE_GENERATOR%"=="Visual Studio 16 2019" (
+    echo [INFO]   cmake --build . --config %BUILD_CONFIG% --parallel
+    cmake --build . --config %BUILD_CONFIG% --parallel  
+) else (
+    echo [INFO]   cmake --build . --config %BUILD_CONFIG%
+    cmake --build . --config %BUILD_CONFIG%
+)
+goto :eof
 
-echo.
+REM Common deployment function
+REM Parameters: %1=build config (Release/Debug), %2=executable path
+:deploy_qt_dependencies
+call :init_constants
+set "DEPLOY_CONFIG=%~1"
+set "EXE_PATH=%~2"
+set "DEPLOY_DIR=%DEPLOY_CONFIG%\deploy"
 
-if "%1"=="check-deps" goto check_deps
-if "%1"=="help" goto show_help
-if "%1"=="" goto full_build
-goto show_help
+call :log_newline
+call :log_message "Executable found at: %EXE_PATH%"
+call :log_newline
+call :log_message "Deploying Qt dependencies for %DEPLOY_CONFIG% build..."
+
+REM Create deployment directory
+if not exist "%DEPLOY_DIR%" mkdir "%DEPLOY_DIR%"
+
+REM Copy executable to deployment directory
+copy "%EXE_PATH%" "%DEPLOY_DIR%\" >nul
+
+REM Use windeployqt to deploy Qt dependencies
+if exist "%QT_WINDEPLOYQT%" (
+    call :log_message "Running windeployqt [minimal deployment]..."
+    echo [INFO] Executing windeployqt:
+    if /i "%DEPLOY_CONFIG%"=="Release" (
+        echo [INFO]   "%QT_WINDEPLOYQT%" --release --no-translations "%DEPLOY_DIR%\phone-linkc.exe"
+        "%QT_WINDEPLOYQT%" --release --no-translations "%DEPLOY_DIR%\phone-linkc.exe"
+    ) else (
+        echo [INFO]   "%QT_WINDEPLOYQT%" --debug --no-translations "%DEPLOY_DIR%\phone-linkc.exe"
+        "%QT_WINDEPLOYQT%" --debug --no-translations "%DEPLOY_DIR%\phone-linkc.exe"
+    )
+    if !errorlevel!==0 (
+        call :log_success "Qt dependencies deployed successfully [minimal package]!"
+        call :log_info "Standalone executable available at: %DEPLOY_DIR%\phone-linkc.exe"
+        call :log_info "Minimal deployment: translations and system D3D excluded"
+    ) else (
+        call :log_warning "windeployqt failed for %DEPLOY_CONFIG% build"
+    )
+) else (
+    call :log_warning "windeployqt.exe not found, executable may need Qt DLLs in PATH"
+)
+
+call :log_newline
+set /p run="Run application? (y/n): "
+if /i "!run!"=="y" (
+    call :log_message "Starting application..."
+    if exist "%DEPLOY_DIR%\phone-linkc.exe" (
+        "%DEPLOY_DIR%\phone-linkc.exe"
+    ) else (
+        "%EXE_PATH%"
+    )
+)
+goto :eof
+
+:init_build
+REM Detect MSVC toolchain
+call :log_message "Detecting MSVC toolchain..."
+
+REM Try to find and configure MSVC
+call :detect_msvc
+if defined COMPILER_TYPE (
+    call :log_info "MSVC toolchain detected and configured"
+    goto configure_qt
+) else (
+    call :log_error "MSVC toolchain not found"
+    call :log_error "Please install Visual Studio 2019/2022 with C++ support"
+    goto end
+)
+
+:configure_qt
+REM Configure Qt MSVC environment
+call :init_constants
+REM Check for MSVC-compiled Qt versions
+if exist "%QT_BASE%\lib\cmake\Qt6\Qt6Config.cmake" (
+    set "PATH=%QT_BASE%\bin;!PATH!"
+    set "Qt6_DIR=%QT_BASE%\lib\cmake\Qt6"
+    call :log_info "Qt 6.10.1 MSVC2022 64-bit configured"
+    goto configure_cmake
+)
+
+call :log_newline
+call :log_error "No MSVC-compiled Qt installation found"
+call :log_error "Please install Qt 6.x with MSVC2022 64-bit support"
+call :log_info "Download from: https://www.qt.io/download"
+goto end
+
+:configure_cmake
+REM Configure Qt CMake environment (prioritize Qt's CMake)
+if exist "%QT_CMAKE_TOOLS%" (
+    set "PATH=D:\Qt\Tools\CMake_64\bin;!PATH!"
+    call :log_info "Qt CMake configured"
+)
+goto start_build
 
 :check_deps
-echo Checking dependencies...
-echo.
+call :log_message "Checking dependencies..."
+call :log_newline
 
 REM Check Qt CMake configuration
 if defined Qt6_DIR (
     if exist "%Qt6_DIR%\Qt6Config.cmake" (
-        echo [OK] Qt CMake configuration found
-        echo     Qt6_DIR: %Qt6_DIR%
+        call :log_ok "Qt CMake configuration found"
+        call :log_info_indent "Qt6_DIR: %Qt6_DIR%"
     ) else (
-        echo [ERROR] Qt6Config.cmake not found at %Qt6_DIR%
+        call :log_error "Qt6Config.cmake not found at %Qt6_DIR%"
     )
 ) else (
-    echo [ERROR] Qt6_DIR not configured
+    call :log_error "Qt6_DIR not configured"
 )
 
-echo.
+call :log_newline
 
 REM Check CMake  
 where cmake >nul 2>&1
 if !errorlevel!==0 (
-    echo [OK] CMake found
-    for /f "tokens=*" %%i in ('cmake --version ^| findstr "cmake version"') do echo     %%i
+    call :log_ok "CMake found"
+    for /f "tokens=*" %%i in ('cmake --version ^| findstr "cmake version"') do call :log_info_indent "%%i"
 ) else (
-    echo [ERROR] CMake not found - Please install from https://cmake.org/download/
+    call :log_error "CMake not found - Please install from https://cmake.org/download/"
 )
 
-echo.
+call :log_newline
 
 REM Check MSVC compiler
 where cl >nul 2>&1
 if !errorlevel!==0 (
-    echo [OK] MSVC compiler found
-    for /f "tokens=*" %%i in ('cl 2^>^&1 ^| findstr "Microsoft"') do echo     %%i
+    call :log_ok "MSVC compiler found"
+    for /f "tokens=*" %%i in ('cl 2^>^&1 ^| findstr "Microsoft"') do call :log_info_indent "%%i"
 ) else (
-    echo [ERROR] MSVC compiler not accessible
-    echo     Please ensure Visual Studio is properly installed and configured
+    call :log_error "MSVC compiler not accessible"
+    call :log_info_indent "Please ensure Visual Studio is properly installed and configured"
 )
 
-echo.
+call :log_newline
 goto end
 
 :show_help
@@ -168,182 +304,108 @@ echo.
 goto end
 
 :full_build
-echo Starting full build process...
-echo.
+goto init_build
+
+:start_build
+call :log_message "Starting full build process..."
+call :log_newline
 goto check_deps_inline
 
 :check_deps_inline
-echo Checking dependencies...
-echo.
+call :log_message "Checking dependencies..."
+call :log_newline
 
 REM Check Qt CMake configuration
 if defined Qt6_DIR (
     if exist "%Qt6_DIR%\Qt6Config.cmake" (
-        echo [OK] Qt CMake configuration found
+        call :log_ok "Qt CMake configuration found"
     ) else (
-        echo [ERROR] Qt6Config.cmake not found - Cannot proceed
+        call :log_error "Qt6Config.cmake not found - Cannot proceed"
         goto end
     )
 ) else (
-    echo [ERROR] Qt6_DIR not configured - Cannot proceed
+    call :log_error "Qt6_DIR not configured - Cannot proceed"
     goto end
 )
 
 REM Check CMake
 where cmake >nul 2>&1
 if !errorlevel!==0 (
-    echo [OK] CMake found
+    call :log_ok "CMake found"
 ) else (
-    echo [ERROR] CMake not found - Cannot proceed
+    call :log_error "CMake not found - Cannot proceed"
     goto end
 )
 
 REM Check MSVC compiler availability
 where cl >nul 2>&1
 if !errorlevel!==0 (
-    echo [OK] MSVC compiler found
+    call :log_ok "MSVC compiler found"
 ) else (
-    echo [ERROR] MSVC compiler not accessible - Cannot proceed
-    echo     Please ensure Visual Studio is properly installed and configured
+    call :log_error "MSVC compiler not accessible - Cannot proceed"
+    call :log_info_indent "Please ensure Visual Studio is properly installed and configured"
     goto end
 )
 
-echo.
-echo All dependencies satisfied!
-echo.
+call :log_newline
+call :log_message "All dependencies satisfied!"
+call :log_newline
 set /p choice="Continue with build? (y/n): "
 if /i not "!choice!"=="y" goto end
 
-echo.
-echo Building project...
-echo.
+call :log_newline
+call :log_message "Building project..."
+call :log_newline
 
 if exist build (
-    echo Cleaning previous build...
+    call :log_message "Cleaning previous build..."
     rmdir /s /q build
 )
 mkdir build
 cd build
 
-echo Running CMake configuration with !CMAKE_GENERATOR! generator...
-echo [INFO] Using compiler: !COMPILER_TYPE!
+call :log_message "Running CMake configuration with !CMAKE_GENERATOR! generator..."
+call :log_info "Using compiler: !COMPILER_TYPE!"
 
-if "%CMAKE_GENERATOR%"=="Visual Studio 17 2022" (
-    cmake .. -G "%CMAKE_GENERATOR%" %CMAKE_ARCH% -DCMAKE_BUILD_TYPE=Release -DQt6_DIR="%Qt6_DIR%"
-) else if "%CMAKE_GENERATOR%"=="Visual Studio 16 2019" (
-    cmake .. -G "%CMAKE_GENERATOR%" %CMAKE_ARCH% -DCMAKE_BUILD_TYPE=Release -DQt6_DIR="%Qt6_DIR%"
-) else (
-    cmake .. -G "%CMAKE_GENERATOR%" -DCMAKE_BUILD_TYPE=Release -DQt6_DIR="%Qt6_DIR%"
-)
-
+REM Use common function to execute CMake configuration
+call :run_cmake_configure
 if !errorlevel! neq 0 (
-    echo [ERROR] CMake configuration failed
+    call :log_error "CMake configuration failed"
     cd ..
     goto end
 )
 
-echo.
-echo Building project with !COMPILER_TYPE! toolchain...
-if "%CMAKE_GENERATOR%"=="Visual Studio 17 2022" (
-    cmake --build . --config Release --parallel
-) else if "%CMAKE_GENERATOR%"=="Visual Studio 16 2019" (
-    cmake --build . --config Release --parallel  
-) else (
-    cmake --build . --config Release
-)
+call :log_newline
+call :log_message "Building project with !COMPILER_TYPE! toolchain..."
+
+REM Use common function to execute build
+call :run_cmake_build
 if !errorlevel! neq 0 (
-    echo [ERROR] Build failed
+    call :log_error "Build failed"
     cd ..
     goto end
 )
 
-echo.
-echo [SUCCESS] Build completed!
+call :log_newline
+call :log_success "Build completed!"
 
 REM Check for executable and deploy Qt dependencies
 if exist "Release\phone-linkc.exe" (
-    echo.
-    echo Executable found at: Release\phone-linkc.exe
-    echo.
-    echo Deploying Qt dependencies...
-    
-    REM Create deployment directory
-    if not exist "Release\deploy" mkdir "Release\deploy"
-    
-    REM Copy executable to deployment directory
-    copy "Release\phone-linkc.exe" "Release\deploy\" >nul
-    
-    REM Use windeployqt to deploy Qt dependencies (minimal deployment)
-    if exist "D:\Qt\6.10.1\msvc2022_64\bin\windeployqt.exe" (
-        echo Running windeployqt [minimal deployment]...
-        "D:\Qt\6.10.1\msvc2022_64\bin\windeployqt.exe" --release --no-translations "Release\deploy\phone-linkc.exe"
-        if !errorlevel!==0 (
-            echo [SUCCESS] Qt dependencies deployed successfully [minimal package]!
-            echo [INFO] Standalone executable available at: Release\deploy\phone-linkc.exe
-            echo [INFO] This version can be double-clicked to run independently
-            echo [INFO] Minimal deployment: translations and system D3D excluded
-        ) else (
-            echo [WARNING] windeployqt failed, but executable may still work
-        )
-    ) else (
-        echo [WARNING] windeployqt.exe not found, executable may need Qt DLLs in PATH
-    )
-    
-    echo.
-    set /p run="Run application? (y/n): "
-    if /i "!run!"=="y" (
-        echo Starting application...
-        if exist "Release\deploy\phone-linkc.exe" (
-            "Release\deploy\phone-linkc.exe"
-        ) else (
-            "Release\phone-linkc.exe"
-        )
-    )
+    call :deploy_qt_dependencies "Release" "Release\phone-linkc.exe"
 ) else if exist "Debug\phone-linkc.exe" (
-    echo.
-    echo Executable found at: Debug\phone-linkc.exe
-    echo.
-    echo Deploying Qt dependencies for Debug build...
-    
-    if not exist "Debug\deploy" mkdir "Debug\deploy"
-    copy "Debug\phone-linkc.exe" "Debug\deploy\" >nul
-    
-    if exist "D:\Qt\6.10.1\msvc2022_64\bin\windeployqt.exe" (
-        echo Running windeployqt for Debug [minimal deployment]...
-        "D:\Qt\6.10.1\msvc2022_64\bin\windeployqt.exe" --debug --no-translations "Debug\deploy\phone-linkc.exe"
-        if !errorlevel!==0 (
-            echo [SUCCESS] Qt dependencies deployed successfully [minimal package]!
-            echo [INFO] Standalone executable available at: Debug\deploy\phone-linkc.exe
-            echo [INFO] Minimal deployment: translations and system D3D excluded
-        ) else (
-            echo [WARNING] windeployqt failed for Debug build
-        )
-    ) else (
-        echo [WARNING] windeployqt.exe not found, executable may need Qt DLLs in PATH
-    )
-    
-    echo.
-    set /p run="Run application? (y/n): "
-    if /i "!run!"=="y" (
-        echo Starting application...
-        if exist "Debug\deploy\phone-linkc.exe" (
-            "Debug\deploy\phone-linkc.exe"
-        ) else (
-            "Debug\phone-linkc.exe"
-        )
-    )
+    call :deploy_qt_dependencies "Debug" "Debug\phone-linkc.exe"
 ) else if exist "phone-linkc.exe" (
-    echo.
-    echo Executable found at: phone-linkc.exe
+    call :log_newline
+    call :log_message "Executable found at: phone-linkc.exe"
     set /p run="Run application? (y/n): "
     if /i "!run!"=="y" (
-        echo Starting application...
+        call :log_message "Starting application..."
         phone-linkc.exe
     )
 ) else (
-    echo Note: Executable not found in expected locations
-    echo Checked: Release\phone-linkc.exe, Debug\phone-linkc.exe, phone-linkc.exe
-    echo Build completed successfully but executable location may be different
+    call :log_message "Note: Executable not found in expected locations"
+    call :log_message "Checked: Release\phone-linkc.exe, Debug\phone-linkc.exe, phone-linkc.exe"
+    call :log_message "Build completed successfully but executable location may be different"
 )
 
 cd ..
