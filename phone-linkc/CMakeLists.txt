@@ -160,6 +160,32 @@ target_link_libraries(phone-linkc
         Qt::Network
 )
 
+# MSVC 特定配置
+if(MSVC)
+    # Qt 6.10.1 要求的 MSVC 编译器选项
+    target_compile_options(phone-linkc PRIVATE 
+        /Zc:__cplusplus      # 启用正确的 C++ 标准宏
+        /permissive-         # 禁用非标准扩展，启用标准一致性
+        /utf-8               # 使用 UTF-8 编码
+        /W3                  # 警告级别
+        /Zc:lambda           # 改进的 lambda 处理
+        /std:c++17           # 明确指定 C++17 标准
+    )
+    
+    # 为了解决 Qt MOC 与 MSVC 2019 的兼容性问题
+    target_compile_definitions(phone-linkc PRIVATE
+        QT_DISABLE_DEPRECATED_UP_TO=0x060000  # 禁用过时的 API 警告
+        _ENABLE_EXTENDED_ALIGNED_STORAGE      # 启用扩展对齐存储支持
+    )
+    
+    # 设置 Windows 子系统（GUI应用）
+    set_target_properties(phone-linkc PROPERTIES
+        WIN32_EXECUTABLE TRUE
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+    )
+endif()
+
 # 如果找到 libimobiledevice，则启用相关功能
 if(LIBIMOBILEDEVICE_AVAILABLE)
     # 验证头文件是否真的可以找到 - 使用简单的文件存在检查
