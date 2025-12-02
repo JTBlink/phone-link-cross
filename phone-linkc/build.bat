@@ -276,7 +276,7 @@ if exist "Release\phone-linkc.exe" (
     REM Use windeployqt to deploy Qt dependencies (minimal deployment)
     if exist "D:\Qt\6.10.1\msvc2022_64\bin\windeployqt.exe" (
         echo Running windeployqt [minimal deployment]...
-        "D:\Qt\6.10.1\msvc2022_64\bin\windeployqt.exe" --release --no-translations --no-system-d3d "Release\deploy\phone-linkc.exe"
+        "D:\Qt\6.10.1\msvc2022_64\bin\windeployqt.exe" --release --no-translations "Release\deploy\phone-linkc.exe"
         if !errorlevel!==0 (
             echo [SUCCESS] Qt dependencies deployed successfully [minimal package]!
             echo [INFO] Standalone executable available at: Release\deploy\phone-linkc.exe
@@ -310,7 +310,7 @@ if exist "Release\phone-linkc.exe" (
     
     if exist "D:\Qt\6.10.1\msvc2022_64\bin\windeployqt.exe" (
         echo Running windeployqt for Debug [minimal deployment]...
-        "D:\Qt\6.10.1\msvc2022_64\bin\windeployqt.exe" --debug --no-translations --no-system-d3d "Debug\deploy\phone-linkc.exe"
+        "D:\Qt\6.10.1\msvc2022_64\bin\windeployqt.exe" --debug --no-translations "Debug\deploy\phone-linkc.exe"
         if !errorlevel!==0 (
             echo [SUCCESS] Qt dependencies deployed successfully [minimal package]!
             echo [INFO] Standalone executable available at: Debug\deploy\phone-linkc.exe
