@@ -107,6 +107,7 @@ config/config.xml~
 # --------
 *.dll
 *.exe
+!scripts/download/iTunes64Setup.exe
 *.lib
 *.exp
 *.pdb
