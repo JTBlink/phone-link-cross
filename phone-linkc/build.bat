@@ -1,4 +1,7 @@
 @echo off
+REM 设置控制台编码为 UTF-8
+chcp 65001 >nul 2>&1
+
 setlocal enabledelayedexpansion
 
 echo =========================================
@@ -28,6 +31,12 @@ set "QT_WINDEPLOYQT=D:\Qt\6.10.1\msvc2022_64\bin\windeployqt.exe"
 REM Build config constants
 set "BUILD_CONFIG=Release"
 set "CMAKE_BUILD_TYPE=Release"
+
+REM libimobiledevice path constants
+set "LIBIMOBILEDEVICE_ROOT=C:\libimobiledevice"
+set "LIBIMOBILEDEVICE_BIN=%LIBIMOBILEDEVICE_ROOT%\bin"
+set "LIBIMOBILEDEVICE_LIB=%LIBIMOBILEDEVICE_ROOT%\lib"
+set "LIBIMOBILEDEVICE_INCLUDE=%LIBIMOBILEDEVICE_ROOT%\include"
 goto :eof
 
 REM ===== Log Function Definitions =====
@@ -74,6 +83,7 @@ goto :eof
 
 :main_logic
 if "%1"=="check-deps" goto check_deps
+if "%1"=="install-deps" goto install_deps
 if "%1"=="help" goto show_help  
 if "%1"=="" goto init_build
 goto show_help
@@ -156,6 +166,69 @@ if "%CMAKE_GENERATOR%"=="Visual Studio 17 2022" (
     echo [INFO]   cmake --build . --config %BUILD_CONFIG%
     cmake --build . --config %BUILD_CONFIG%
 )
+goto :eof
+
+REM libimobiledevice check function
+:check_libimobiledevice
+call :init_constants
+echo libimobiledevice status check:
+
+REM Check default installation path
+if exist "%LIBIMOBILEDEVICE_ROOT%" (
+    call :log_ok "libimobiledevice installation directory found"
+    call :log_info_indent "Path: %LIBIMOBILEDEVICE_ROOT%"
+    
+    REM Check key executable files
+    if exist "%LIBIMOBILEDEVICE_BIN%\idevice_id.exe" (
+        call :log_ok "idevice_id.exe found"
+        
+        REM Test device connection
+        call :log_info_indent "Testing device connection..."
+        "%LIBIMOBILEDEVICE_BIN%\idevice_id.exe" -l >nul 2>&1
+        if !errorlevel! equ 0 (
+            call :log_ok "libimobiledevice tools working properly"
+        ) else (
+            call :log_warning "libimobiledevice tools may need additional dependencies"
+        )
+    ) else (
+        call :log_error "idevice_id.exe not found"
+        call :log_info_indent "Installation may be incomplete"
+    )
+    
+    REM Check library files
+    if exist "%LIBIMOBILEDEVICE_LIB%\libimobiledevice-1.0.dll" (
+        call :log_ok "libimobiledevice-1.0.dll found"
+    ) else (
+        call :log_warning "libimobiledevice-1.0.dll not found"
+    )
+    
+    REM Check header files
+    if exist "%LIBIMOBILEDEVICE_INCLUDE%\libimobiledevice\libimobiledevice.h" (
+        call :log_ok "libimobiledevice header files found"
+    ) else (
+        call :log_warning "libimobiledevice header files not found"
+    )
+    
+) else (
+    call :log_error "libimobiledevice not installed"
+    call :log_info_indent "Expected installation path: %LIBIMOBILEDEVICE_ROOT%"
+    call :log_info_indent "Run the following command to install:"
+    call :log_info_indent "  build.bat install-deps"
+    call :log_info_indent "Or use Python script directly:"
+    call :log_info_indent "  python scripts/install-deps.py"
+)
+
+REM Check PATH environment variable
+where idevice_id.exe >nul 2>&1
+if !errorlevel! equ 0 (
+    call :log_info "idevice_id.exe found in PATH"
+    for /f "tokens=*" %%i in ('where idevice_id.exe') do call :log_info_indent "Location: %%i"
+) else (
+    if not exist "%LIBIMOBILEDEVICE_ROOT%" (
+        call :log_warning "idevice_id.exe not in system PATH"
+    )
+)
+
 goto :eof
 
 REM Common deployment function
@@ -291,15 +364,53 @@ if !errorlevel!==0 (
 )
 
 call :log_newline
+
+REM Check libimobiledevice
+call :check_libimobiledevice
+
+call :log_newline
+goto end
+
+:install_deps
+call :log_message "启动完整依赖安装..."
+
+REM 检查安装脚本
+set "INSTALL_SCRIPT=%~dp0scripts\install-deps.bat"
+if exist "%INSTALL_SCRIPT%" (
+    call :log_info "使用安装脚本: %INSTALL_SCRIPT%"
+    call "%INSTALL_SCRIPT%"
+    if !errorlevel! equ 0 (
+        call :log_success "依赖安装完成"
+        call :log_info "请重新打开命令提示符以使环境变量生效，然后运行构建"
+    ) else (
+        call :log_error "依赖安装失败"
+    )
+) else (
+    call :log_error "安装脚本未找到: %INSTALL_SCRIPT%"
+    call :log_info "请确保 scripts 目录包含安装脚本"
+    call :log_info "或直接运行: python scripts/install-deps.py"
+)
 goto end
 
 :show_help
 echo Usage: build.bat [option]
 echo.
 echo Options:
-echo   check-deps  - Check dependencies
-echo   help        - Show this help
-echo   (no args)   - Run full build
+echo   check-deps              - Check dependencies
+echo   install-deps            - Install all dependencies
+echo   help                    - Show this help
+echo   (no args)               - Run full build
+echo.
+echo Examples:
+echo   build.bat                           - Run full build process
+echo   build.bat check-deps               - Check all dependencies
+echo   build.bat install-deps             - Install all dependencies
+echo.
+echo Recommended workflow:
+echo   1. build.bat install-deps          - Install dependencies
+echo   2. Restart command prompt          - Apply environment variables
+echo   3. build.bat check-deps           - Verify installation
+echo   4. build.bat                      - Build project
 echo.
 goto end
 
