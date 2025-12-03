@@ -76,10 +76,16 @@ class DependencyInstaller:
         # 安装配置
         self.config = {
             'Windows': {
-                'libimobiledevice': {
+                'libimobiledevice_runtime': {
                     'url': 'https://github.com/libimobiledevice-win32/imobiledevice-net/releases/download/v1.3.17/libimobiledevice.1.2.1-r1122-win-x64.zip',
                     'filename': 'libimobiledevice.1.2.1-r1122-win-x64.zip',
                     'install_dir': 'thirdparty\\libimobiledevice',
+                    'sha256': ''  # 可选的文件校验
+                },
+                'libimobiledevice_headers': {
+                    'url': 'https://github.com/libimobiledevice-win32/libimobiledevice/archive/refs/tags/v1.3.17.zip',
+                    'filename': 'libimobiledevice-v1.3.17.zip',
+                    'install_dir': 'thirdparty\\libimobiledevice\\include',
                     'sha256': ''  # 可选的文件校验
                 },
                 'itunes_driver': {
@@ -223,21 +229,36 @@ class DependencyInstaller:
         """安装 libimobiledevice (Windows)"""
         self.print_status("info", "开始安装 libimobiledevice (Windows)")
         
-        config = self.config['Windows']['libimobiledevice']
-        # 从脚本目录找到项目根目录，然后构建目标路径
-        script_dir = Path(__file__).parent  # scripts 目录
-        project_root = script_dir.parent    # phone-linkc 目录
-        install_dir = project_root / "thirdparty" / "libimobiledevice"
+        # 从脚本目录找到代码仓库根目录
+        script_dir = Path(__file__).parent              # scripts 目录
+        phone_linkc_dir = script_dir.parent             # phone-linkc 目录  
+        repo_root = phone_linkc_dir.parent              # phone-link-cross 目录（代码仓库根目录）
+        base_install_dir = repo_root / "phone-linkc" / "thirdparty" / "libimobiledevice"
         
-        # 下载到用户Downloads目录
+        success = True
+        
+        # 1. 安装运行时文件
+        if not self._install_libimobiledevice_runtime(base_install_dir):
+            success = False
+        
+        # 2. 安装头文件
+        if not self._install_libimobiledevice_headers(base_install_dir):
+            self.print_status("warning", "头文件安装失败，但运行时可能仍可使用")
+        
+        return success
+
+    def _install_libimobiledevice_runtime(self, install_dir: Path) -> bool:
+        """安装 libimobiledevice 运行时文件"""
+        self.print_status("info", "安装 libimobiledevice 运行时...")
+        
+        config = self.config['Windows']['libimobiledevice_runtime']
         downloads_dir = self.get_downloads_directory()
         zip_path = downloads_dir / config['filename']
         
-        # 检查是否已存在文件
+        # 下载运行时文件
         if zip_path.exists():
-            self.print_status("info", f"使用已存在的文件: {zip_path}")
+            self.print_status("info", f"使用已存在的运行时文件: {zip_path}")
         else:
-            # 下载
             if not self.download_with_progress(config['url'], str(zip_path)):
                 return False
         
@@ -254,8 +275,8 @@ class DependencyInstaller:
                 self.print_status("error", f"无法删除旧版本: {e}")
                 return False
         
-        # 解压
-        self.print_status("info", f"解压到: {install_dir}")
+        # 解压运行时文件
+        self.print_status("info", f"解压运行时到: {install_dir}")
         try:
             install_dir.mkdir(parents=True, exist_ok=True)
             
@@ -263,7 +284,7 @@ class DependencyInstaller:
                 zip_ref.extractall(install_dir)
                 
         except Exception as e:
-            self.print_status("error", f"解压失败: {e}")
+            self.print_status("error", f"解压运行时失败: {e}")
             return False
         
         # 查找实际的可执行文件位置
@@ -272,7 +293,7 @@ class DependencyInstaller:
             self.print_status("error", "未找到可执行文件目录")
             return False
             
-        self.print_status("success", f"可执行文件位置: {bin_dir}")
+        self.print_status("success", f"运行时可执行文件位置: {bin_dir}")
         
         # 设置环境变量
         if not self._setup_windows_environment(install_dir, bin_dir):
@@ -280,10 +301,80 @@ class DependencyInstaller:
         
         # 验证安装
         if self._verify_libimobiledevice_installation(bin_dir):
-            self.print_status("success", "libimobiledevice 安装成功")
+            self.print_status("success", "libimobiledevice 运行时安装成功")
             return True
         else:
-            self.print_status("error", "libimobiledevice 安装验证失败")
+            self.print_status("error", "libimobiledevice 运行时安装验证失败")
+            return False
+
+    def _install_libimobiledevice_headers(self, base_install_dir: Path) -> bool:
+        """安装 libimobiledevice 头文件"""
+        self.print_status("info", "安装 libimobiledevice 头文件...")
+        
+        config = self.config['Windows']['libimobiledevice_headers']
+        downloads_dir = self.get_downloads_directory()
+        zip_path = downloads_dir / config['filename']
+        
+        # 下载头文件
+        if zip_path.exists():
+            self.print_status("info", f"使用已存在的头文件: {zip_path}")
+        else:
+            if not self.download_with_progress(config['url'], str(zip_path)):
+                return False
+        
+        # 验证文件哈希（如果提供）
+        if config.get('sha256') and not self.verify_file_hash(str(zip_path), config['sha256']):
+            return False
+        
+        # 解压头文件到临时目录
+        temp_extract_dir = Path(self.temp_dir) / "libimobiledevice-headers"
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(temp_extract_dir)
+        except Exception as e:
+            self.print_status("error", f"解压头文件失败: {e}")
+            return False
+        
+        # 查找源代码中的 libimobiledevice 头文件目录
+        libimobiledevice_source_dir = None
+        for root, dirs, files in os.walk(temp_extract_dir):
+            if 'include' in dirs:
+                include_dir = Path(root) / 'include'
+                libimobiledevice_dir = include_dir / 'libimobiledevice'
+                if libimobiledevice_dir.exists() and libimobiledevice_dir.is_dir():
+                    # 检查是否包含核心头文件
+                    if (libimobiledevice_dir / 'libimobiledevice.h').exists():
+                        libimobiledevice_source_dir = libimobiledevice_dir
+                        break
+        
+        if not libimobiledevice_source_dir:
+            self.print_status("error", "未找到 libimobiledevice 头文件目录")
+            return False
+        
+        # 准备目标目录
+        include_target_dir = base_install_dir / "include"
+        libimobiledevice_target_dir = include_target_dir / "libimobiledevice"
+        
+        try:
+            # 创建 include 目录
+            include_target_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 如果目标目录存在，先删除
+            if libimobiledevice_target_dir.exists():
+                shutil.rmtree(libimobiledevice_target_dir)
+            
+            # 只复制 libimobiledevice 头文件目录
+            shutil.copytree(libimobiledevice_source_dir, libimobiledevice_target_dir)
+            
+            # 计算复制的头文件数量
+            header_count = len(list(libimobiledevice_target_dir.glob('*.h')))
+            
+            self.print_status("success", f"libimobiledevice 头文件已复制到: {libimobiledevice_target_dir}")
+            self.print_status("info", f"共复制 {header_count} 个头文件")
+            return True
+            
+        except Exception as e:
+            self.print_status("error", f"复制头文件失败: {e}")
             return False
 
     def _find_executable_dir(self, base_dir: Path, target_exe: str) -> Optional[Path]:
@@ -579,12 +670,14 @@ class DependencyInstaller:
             print()
             
             print("安装位置:")
-            print(f"- libimobiledevice: thirdparty/libimobiledevice/")
+            print(f"- libimobiledevice 运行时: thirdparty/libimobiledevice/")
+            print(f"- libimobiledevice 头文件: thirdparty/libimobiledevice/include/")
             
             downloads_dir = self.get_downloads_directory()
             print("下载文件位置:")
             print(f"- Downloads目录: {downloads_dir}")
-            print("- libimobiledevice.1.2.1-r1122-win-x64.zip")
+            print("- libimobiledevice.1.2.1-r1122-win-x64.zip (运行时)")
+            print("- libimobiledevice-v1.3.17.zip (头文件)")
             print("- iTunes64Setup.exe (如果已下载)")
             print()
             
