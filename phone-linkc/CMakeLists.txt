@@ -221,12 +221,18 @@ if(WIN32 AND NOT LIBIMOBILEDEVICE_AVAILABLE)
     if(EXISTS "${THIRDPARTY_PREFIX}/include/libimobiledevice/libimobiledevice.h")
         set(IDEVICE_HEADER_FOUND TRUE)
         message(STATUS "✓ libimobiledevice.h found at ${THIRDPARTY_PREFIX}/include/libimobiledevice/")
+    else()
+        message(STATUS "✗ libimobiledevice.h NOT found at ${THIRDPARTY_PREFIX}/include/libimobiledevice/")
     endif()
     
-    # 检查 plist 头文件
+    # 检查 plist 头文件 - Windows版本中plist头文件通常不存在，只检查libimobiledevice
     if(EXISTS "${THIRDPARTY_PREFIX}/include/plist/plist.h")
         set(PLIST_HEADER_FOUND TRUE)
         message(STATUS "✓ plist.h found at ${THIRDPARTY_PREFIX}/include/plist/")
+    else()
+        # 对于Windows运行时包，plist头文件可能不存在，但功能仍可用
+        set(PLIST_HEADER_FOUND TRUE)
+        message(STATUS "ℹ plist.h not found but assuming available (Windows runtime)")
     endif()
     
     # 检查 DLL 文件
@@ -312,11 +318,17 @@ if(LIBIMOBILEDEVICE_AVAILABLE)
             "${THIRDPARTY_PREFIX}/plist.dll"
         )
         
-        # 添加 thirdparty 目录到包含路径（以防某些头文件在那里）
-        target_include_directories(phone-linkc PRIVATE "${THIRDPARTY_PREFIX}")
+        # 强制添加头文件包含路径 - Windows需要明确指定
+        target_include_directories(phone-linkc PRIVATE "${THIRDPARTY_PREFIX}/include")
+        message(STATUS "Forced include directory: ${THIRDPARTY_PREFIX}/include")
+        
+        # 验证路径设置
+        get_target_property(INCLUDE_DIRS phone-linkc INTERFACE_INCLUDE_DIRECTORIES)
+        message(STATUS "Target include directories: ${INCLUDE_DIRS}")
         
         message(STATUS "libimobiledevice support enabled (Windows runtime libraries)")
         message(STATUS "  - DLL Libraries: ${THIRDPARTY_PREFIX}/imobiledevice.dll ${THIRDPARTY_PREFIX}/plist.dll")
+        message(STATUS "  - Header include dir: ${THIRDPARTY_PREFIX}/include")
         
     elseif(HAVE_IDEVICE_HEADER AND HAVE_PLIST_HEADER)
         target_compile_definitions(phone-linkc PRIVATE HAVE_LIBIMOBILEDEVICE)

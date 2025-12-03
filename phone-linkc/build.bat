@@ -32,10 +32,11 @@ REM Build config constants
 set "BUILD_CONFIG=Release"
 set "CMAKE_BUILD_TYPE=Release"
 
-REM libimobiledevice path constants
-set "LIBIMOBILEDEVICE_ROOT=C:\libimobiledevice"
-set "LIBIMOBILEDEVICE_BIN=%LIBIMOBILEDEVICE_ROOT%\bin"
-set "LIBIMOBILEDEVICE_LIB=%LIBIMOBILEDEVICE_ROOT%\lib"
+REM libimobiledevice path constants  
+set "SCRIPT_DIR=%~dp0"
+set "LIBIMOBILEDEVICE_ROOT=%SCRIPT_DIR%thirdparty\libimobiledevice"
+set "LIBIMOBILEDEVICE_BIN=%LIBIMOBILEDEVICE_ROOT%"
+set "LIBIMOBILEDEVICE_LIB=%LIBIMOBILEDEVICE_ROOT%"
 set "LIBIMOBILEDEVICE_INCLUDE=%LIBIMOBILEDEVICE_ROOT%\include"
 goto :eof
 

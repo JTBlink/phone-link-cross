@@ -78,13 +78,19 @@ class DependencyInstaller:
             'Windows': {
                 'libimobiledevice_runtime': {
                     'url': 'https://github.com/libimobiledevice-win32/imobiledevice-net/releases/download/v1.3.17/libimobiledevice.1.2.1-r1122-win-x64.zip',
-                    'filename': 'libimobiledevice.1.2.1-r1122-win-x64.zip',
+                    'filename': 'libimobiledevice-v1.3.17-win-x64.zip',
                     'install_dir': 'thirdparty\\libimobiledevice',
                     'sha256': ''  # 可选的文件校验
                 },
                 'libimobiledevice_headers': {
                     'url': 'https://github.com/libimobiledevice-win32/libimobiledevice/archive/refs/tags/v1.3.17.zip',
                     'filename': 'libimobiledevice-v1.3.17.zip',
+                    'install_dir': 'thirdparty\\libimobiledevice\\include',
+                    'sha256': ''  # 可选的文件校验
+                },
+                'libplist_headers': {
+                    'url': 'https://github.com/libimobiledevice-win32/libplist/archive/refs/tags/v1.3.17.zip',
+                    'filename': 'libplist-v1.3.17.zip',
                     'install_dir': 'thirdparty\\libimobiledevice\\include',
                     'sha256': ''  # 可选的文件校验
                 },
@@ -241,9 +247,13 @@ class DependencyInstaller:
         if not self._install_libimobiledevice_runtime(base_install_dir):
             success = False
         
-        # 2. 安装头文件
+        # 2. 安装 libimobiledevice 头文件
         if not self._install_libimobiledevice_headers(base_install_dir):
-            self.print_status("warning", "头文件安装失败，但运行时可能仍可使用")
+            self.print_status("warning", "libimobiledevice 头文件安装失败，但运行时可能仍可使用")
+        
+        # 3. 安装 libplist 头文件
+        if not self._install_libplist_headers(base_install_dir):
+            self.print_status("warning", "libplist 头文件安装失败，但可能仍可使用")
         
         return success
 
@@ -375,6 +385,76 @@ class DependencyInstaller:
             
         except Exception as e:
             self.print_status("error", f"复制头文件失败: {e}")
+            return False
+
+    def _install_libplist_headers(self, base_install_dir: Path) -> bool:
+        """安装 libplist 头文件"""
+        self.print_status("info", "安装 libplist 头文件...")
+        
+        config = self.config['Windows']['libplist_headers']
+        downloads_dir = self.get_downloads_directory()
+        zip_path = downloads_dir / config['filename']
+        
+        # 下载头文件
+        if zip_path.exists():
+            self.print_status("info", f"使用已存在的 plist 头文件: {zip_path}")
+        else:
+            if not self.download_with_progress(config['url'], str(zip_path)):
+                return False
+        
+        # 验证文件哈希（如果提供）
+        if config.get('sha256') and not self.verify_file_hash(str(zip_path), config['sha256']):
+            return False
+        
+        # 解压头文件到临时目录
+        temp_extract_dir = Path(self.temp_dir) / "libplist-headers"
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(temp_extract_dir)
+        except Exception as e:
+            self.print_status("error", f"解压 plist 头文件失败: {e}")
+            return False
+        
+        # 查找源代码中的 plist 头文件目录
+        plist_source_dir = None
+        for root, dirs, files in os.walk(temp_extract_dir):
+            if 'include' in dirs:
+                include_dir = Path(root) / 'include'
+                plist_dir = include_dir / 'plist'
+                if plist_dir.exists() and plist_dir.is_dir():
+                    # 检查是否包含核心头文件
+                    if (plist_dir / 'plist.h').exists():
+                        plist_source_dir = plist_dir
+                        break
+        
+        if not plist_source_dir:
+            self.print_status("error", "未找到 plist 头文件目录")
+            return False
+        
+        # 准备目标目录
+        include_target_dir = base_install_dir / "include"
+        plist_target_dir = include_target_dir / "plist"
+        
+        try:
+            # 创建 include 目录
+            include_target_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 如果目标目录存在，先删除
+            if plist_target_dir.exists():
+                shutil.rmtree(plist_target_dir)
+            
+            # 只复制 plist 头文件目录
+            shutil.copytree(plist_source_dir, plist_target_dir)
+            
+            # 计算复制的头文件数量
+            header_count = len(list(plist_target_dir.glob('*.h')))
+            
+            self.print_status("success", f"plist 头文件已复制到: {plist_target_dir}")
+            self.print_status("info", f"共复制 {header_count} 个 plist 头文件")
+            return True
+            
+        except Exception as e:
+            self.print_status("error", f"复制 plist 头文件失败: {e}")
             return False
 
     def _find_executable_dir(self, base_dir: Path, target_exe: str) -> Optional[Path]:
@@ -676,8 +756,9 @@ class DependencyInstaller:
             downloads_dir = self.get_downloads_directory()
             print("下载文件位置:")
             print(f"- Downloads目录: {downloads_dir}")
-            print("- libimobiledevice.1.2.1-r1122-win-x64.zip (运行时)")
+            print("- libimobiledevice-v1.3.17-win-x64.zip (运行时)")
             print("- libimobiledevice-v1.3.17.zip (头文件)")
+            print("- libplist-v1.3.17.zip (plist头文件)")
             print("- iTunes64Setup.exe (如果已下载)")
             print()
             
