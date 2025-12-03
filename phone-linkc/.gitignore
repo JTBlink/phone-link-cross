@@ -105,9 +105,11 @@ config/config.xml~
 
 # Binaries
 # --------
-*.dll
-*.exe
+#*.dll
+#*.exe
 !scripts/download/iTunes64Setup.exe
+!thirdparty/**/*.dll
+!thirdparty/**/*.exe
 *.lib
 *.exp
 *.pdb
