@@ -116,8 +116,8 @@ config/config.xml~
 *.ilk
 
 # Qt Windows binaries
-*d.dll
-*d.exe
+#*d.dll
+#*d.exe
 moc.exe
 uic.exe
 rcc.exe
