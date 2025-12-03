@@ -329,7 +329,7 @@ class QtInstaller:
                 print("   - GCC/Clang compiler")
             print("4. Recommended installation path:")
             if self.system == 'windows':
-                print("   C:\\Qt")
+                print("   D:\\Qt")
             else:
                 print("   ~/Qt")
             print("=" * 50 + "\n")

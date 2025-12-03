@@ -203,6 +203,76 @@ if(MSVC)
     )
 endif()
 
+# Windows 特定处理：如果 pkg-config 没找到，尝试直接使用 thirdparty 路径
+if(WIN32 AND NOT LIBIMOBILEDEVICE_AVAILABLE)
+    message(STATUS "尝试使用 thirdparty 路径查找 libimobiledevice...")
+    
+    # 设置 thirdparty 路径
+    set(THIRDPARTY_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libimobiledevice")
+    message(STATUS "Thirdparty prefix: ${THIRDPARTY_PREFIX}")
+    
+    # 检查头文件和库文件是否存在
+    set(IDEVICE_HEADER_FOUND FALSE)
+    set(PLIST_HEADER_FOUND FALSE)
+    set(IDEVICE_DLL_FOUND FALSE)
+    set(PLIST_DLL_FOUND FALSE)
+    
+    # 检查 libimobiledevice 头文件（Windows上通常在include子目录）
+    if(EXISTS "${THIRDPARTY_PREFIX}/include/libimobiledevice/libimobiledevice.h")
+        set(IDEVICE_HEADER_FOUND TRUE)
+        message(STATUS "✓ libimobiledevice.h found at ${THIRDPARTY_PREFIX}/include/libimobiledevice/")
+    endif()
+    
+    # 检查 plist 头文件
+    if(EXISTS "${THIRDPARTY_PREFIX}/include/plist/plist.h")
+        set(PLIST_HEADER_FOUND TRUE)
+        message(STATUS "✓ plist.h found at ${THIRDPARTY_PREFIX}/include/plist/")
+    endif()
+    
+    # 检查 DLL 文件
+    if(EXISTS "${THIRDPARTY_PREFIX}/imobiledevice.dll")
+        set(IDEVICE_DLL_FOUND TRUE)
+        message(STATUS "✓ imobiledevice.dll found at ${THIRDPARTY_PREFIX}/")
+    endif()
+    
+    if(EXISTS "${THIRDPARTY_PREFIX}/plist.dll")
+        set(PLIST_DLL_FOUND TRUE)
+        message(STATUS "✓ plist.dll found at ${THIRDPARTY_PREFIX}/")
+    endif()
+    
+    # 如果找到了关键文件，配置 libimobiledevice
+    if(IDEVICE_DLL_FOUND AND PLIST_DLL_FOUND)
+        # 设置包含目录
+        if(IDEVICE_HEADER_FOUND AND PLIST_HEADER_FOUND)
+            set(IMOBILEDEVICE_INCLUDE_DIRS "${THIRDPARTY_PREFIX}/include")
+            set(PLIST_INCLUDE_DIRS "${THIRDPARTY_PREFIX}/include")
+        else()
+            # 如果没有头文件，使用默认路径（某些预编译包可能没有头文件）
+            set(IMOBILEDEVICE_INCLUDE_DIRS "${THIRDPARTY_PREFIX}")
+            set(PLIST_INCLUDE_DIRS "${THIRDPARTY_PREFIX}")
+        endif()
+        
+        # 设置库路径 - Windows 上直接使用 DLL
+        set(IMOBILEDEVICE_LIBRARIES "${THIRDPARTY_PREFIX}/imobiledevice.dll")
+        set(PLIST_LIBRARIES "${THIRDPARTY_PREFIX}/plist.dll")
+        
+        # 设置找到标志
+        set(IMOBILEDEVICE_FOUND TRUE)
+        set(PLIST_FOUND TRUE)
+        set(LIBIMOBILEDEVICE_AVAILABLE TRUE)
+        
+        message(STATUS "通过 thirdparty 路径找到 libimobiledevice")
+        message(STATUS "  - Include dirs: ${IMOBILEDEVICE_INCLUDE_DIRS}")
+        message(STATUS "  - Libraries: ${IMOBILEDEVICE_LIBRARIES} ${PLIST_LIBRARIES}")
+    else()
+        message(WARNING "thirdparty 路径下未找到完整的 libimobiledevice 库")
+        message(STATUS "  - imobiledevice.dll: ${IDEVICE_DLL_FOUND}")
+        message(STATUS "  - plist.dll: ${PLIST_DLL_FOUND}")
+        message(STATUS "  - libimobiledevice.h: ${IDEVICE_HEADER_FOUND}")
+        message(STATUS "  - plist.h: ${PLIST_HEADER_FOUND}")
+    endif()
+endif()
+
 # 如果找到 libimobiledevice，则启用相关功能
 if(LIBIMOBILEDEVICE_AVAILABLE)
     # 验证头文件是否真的可以找到 - 使用简单的文件存在检查
@@ -232,7 +302,23 @@ if(LIBIMOBILEDEVICE_AVAILABLE)
     message(STATUS "  - HAVE_IDEVICE_HEADER: ${HAVE_IDEVICE_HEADER}")
     message(STATUS "  - HAVE_PLIST_HEADER: ${HAVE_PLIST_HEADER}")
     
-    if(HAVE_IDEVICE_HEADER AND HAVE_PLIST_HEADER)
+    # 为 Windows 特殊处理 - 使用运行时库
+    if(WIN32 AND IDEVICE_DLL_FOUND AND PLIST_DLL_FOUND)
+        target_compile_definitions(phone-linkc PRIVATE HAVE_LIBIMOBILEDEVICE)
+        
+        # Windows 上直接链接 DLL 文件
+        target_link_libraries(phone-linkc PRIVATE 
+            "${THIRDPARTY_PREFIX}/imobiledevice.dll"
+            "${THIRDPARTY_PREFIX}/plist.dll"
+        )
+        
+        # 添加 thirdparty 目录到包含路径（以防某些头文件在那里）
+        target_include_directories(phone-linkc PRIVATE "${THIRDPARTY_PREFIX}")
+        
+        message(STATUS "libimobiledevice support enabled (Windows runtime libraries)")
+        message(STATUS "  - DLL Libraries: ${THIRDPARTY_PREFIX}/imobiledevice.dll ${THIRDPARTY_PREFIX}/plist.dll")
+        
+    elseif(HAVE_IDEVICE_HEADER AND HAVE_PLIST_HEADER)
         target_compile_definitions(phone-linkc PRIVATE HAVE_LIBIMOBILEDEVICE)
         
         # 链接库 - 直接查找库文件

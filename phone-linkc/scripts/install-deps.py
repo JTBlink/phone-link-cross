@@ -79,7 +79,7 @@ class DependencyInstaller:
                 'libimobiledevice': {
                     'url': 'https://github.com/libimobiledevice-win32/imobiledevice-net/releases/download/v1.3.17/libimobiledevice.1.2.1-r1122-win-x64.zip',
                     'filename': 'libimobiledevice.1.2.1-r1122-win-x64.zip',
-                    'install_dir': 'C:\\libimobiledevice',
+                    'install_dir': 'thirdparty\\libimobiledevice',
                     'sha256': ''  # 可选的文件校验
                 },
                 'itunes_driver': {
@@ -224,7 +224,10 @@ class DependencyInstaller:
         self.print_status("info", "开始安装 libimobiledevice (Windows)")
         
         config = self.config['Windows']['libimobiledevice']
-        install_dir = Path(config['install_dir'])
+        # 从脚本目录找到项目根目录，然后构建目标路径
+        script_dir = Path(__file__).parent  # scripts 目录
+        project_root = script_dir.parent    # phone-linkc 目录
+        install_dir = project_root / "thirdparty" / "libimobiledevice"
         
         # 下载到用户Downloads目录
         downloads_dir = self.get_downloads_directory()
@@ -574,6 +577,9 @@ class DependencyInstaller:
             print("- libimobiledevice: iOS 设备通信库")
             print("- Apple Mobile Device Support (如果安装 iTunes)")
             print()
+            
+            print("安装位置:")
+            print(f"- libimobiledevice: thirdparty/libimobiledevice/")
             
             downloads_dir = self.get_downloads_directory()
             print("下载文件位置:")

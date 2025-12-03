@@ -447,12 +447,7 @@ class LibimobiledeviceChecker:
             print("   build.bat install-deps")
             print("   或者: python scripts\\install-deps.py")
             print()
-            print("2. 手动下载安装:")
-            print("   - 下载地址: https://github.com/libimobiledevice-win32/imobiledevice-net/releases")
-            print("   - 解压到: C:\\libimobiledevice")
-            print("   - 添加环境变量: C:\\libimobiledevice\\bin")
-            print()
-            print("3. 使用 vcpkg 安装:")
+            print("2. 使用 vcpkg 安装:")
             print("   vcpkg install libimobiledevice:x64-windows")
             print("   vcpkg install libplist:x64-windows")
         else:
