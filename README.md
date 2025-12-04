@@ -55,6 +55,11 @@ phone-link-cross/
 │   ├── devicemanager.*        # 设备管理核心
 │   ├── deviceinfo.*          # 设备信息管理
 │   ├── mainwindow.*           # Qt 图形界面
+│   ├── assets/images/         # 图片素材目录
+│   │   ├── screenshots/       # 应用截图
+│   │   ├── icons/             # 图标文件
+│   │   ├── diagrams/          # 架构图表
+│   │   └── logos/             # 项目标志
 │   └── README.md              # 应用使用指南
 ├── doc/                       # 文档系统
 │   ├── libimobiledevice-overview.md      # 功能总览
@@ -278,4 +283,3 @@ git push origin v1.0.0
 <p align="center">
   ⭐ 如果这个项目对您有帮助，请给它一个 Star！
 </p>
-

@@ -273,6 +273,45 @@ if exist "%QT_WINDEPLOYQT%" (
     call :log_warning "windeployqt.exe not found, executable may need Qt DLLs in PATH"
 )
 
+REM Deploy libimobiledevice dependencies
+call :log_newline
+call :log_message "Deploying libimobiledevice dependencies..."
+if exist "%LIBIMOBILEDEVICE_ROOT%" (
+    REM Create libimobiledevice subdirectory
+    if not exist "%DEPLOY_DIR%\libimobiledevice" mkdir "%DEPLOY_DIR%\libimobiledevice"
+    
+    REM Copy all DLL files
+    if exist "%LIBIMOBILEDEVICE_ROOT%\*.dll" (
+        copy "%LIBIMOBILEDEVICE_ROOT%\*.dll" "%DEPLOY_DIR%\libimobiledevice\" >nul 2>&1
+        call :log_ok "libimobiledevice DLL files copied"
+    )
+    
+    REM Copy all executable files
+    if exist "%LIBIMOBILEDEVICE_ROOT%\*.exe" (
+        copy "%LIBIMOBILEDEVICE_ROOT%\*.exe" "%DEPLOY_DIR%\libimobiledevice\" >nul 2>&1
+        call :log_ok "libimobiledevice executable files copied"
+    )
+    
+    REM Copy include directory for dynamic loading
+    if exist "%LIBIMOBILEDEVICE_INCLUDE%" (
+        xcopy "%LIBIMOBILEDEVICE_INCLUDE%" "%DEPLOY_DIR%\libimobiledevice\include\" /E /I /Q >nul 2>&1
+        call :log_ok "libimobiledevice header files copied"
+    )
+    
+    REM Copy documentation if exists
+    if exist "%LIBIMOBILEDEVICE_ROOT%\doc" (
+        xcopy "%LIBIMOBILEDEVICE_ROOT%\doc" "%DEPLOY_DIR%\libimobiledevice\doc\" /E /I /Q >nul 2>&1
+        call :log_ok "libimobiledevice documentation copied"
+    )
+    
+    call :log_success "libimobiledevice dependencies deployed successfully!"
+    call :log_info "libimobiledevice path: %DEPLOY_DIR%\libimobiledevice\"
+    call :log_info "Core libraries and tools included for iOS device support"
+) else (
+    call :log_warning "libimobiledevice not found at: %LIBIMOBILEDEVICE_ROOT%"
+    call :log_info "Application will use fallback/simulation mode"
+)
+
 call :log_newline
 set /p run="Run application? (y/n): "
 if /i "!run!"=="y" (

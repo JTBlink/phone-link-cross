@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "libimobiledevice_dynamic.h"
 #include <QDebug>
 #include <QMessageBox>
 #include <QApplication>
@@ -80,11 +81,9 @@ void MainWindow::setupUI()
     // 右侧信息显示
     m_infoDisplay = new QTextEdit;
     m_infoDisplay->setReadOnly(true);
-#ifdef HAVE_LIBIMOBILEDEVICE
-    m_infoDisplay->setPlainText("未发现 iOS 设备\n\n请确保：\n1. iOS 设备已连接到电脑\n2. 设备已解锁并信任此电脑\n3. iTunes 或其他同步软件已关闭\n\n连接设备后点击【刷新列表】按钮重新检测");
-#else
-    m_infoDisplay->setPlainText("libimobiledevice 未安装\n\n无法连接 iOS 设备。\n\n请安装 libimobiledevice 以支持 iOS 设备连接。\n\n安装方法：\n• macOS: brew install libimobiledevice\n• Ubuntu: sudo apt install libimobiledevice-utils\n• Windows: 请参考项目文档");
-#endif
+    
+    // 根据运行时动态库加载状态设置初始文本
+    updateInitialDisplayText();
     
     // 添加到分割器
     m_mainSplitter->addWidget(leftWidget);
@@ -96,12 +95,7 @@ void MainWindow::setupUI()
     QVBoxLayout *mainLayout = new QVBoxLayout(m_centralWidget);
     mainLayout->addWidget(m_mainSplitter);
     
-    // 状态栏
-#ifdef HAVE_LIBIMOBILEDEVICE
-    m_statusLabel = new QLabel("未发现 iOS 设备");
-#else
-    m_statusLabel = new QLabel("libimobiledevice 未安装 - 无法连接 iOS 设备");
-#endif
+    // 状态栏 - 在 updateInitialDisplayText() 中创建
     statusBar()->addWidget(m_statusLabel);
     
     // 初始状态
@@ -194,24 +188,30 @@ void MainWindow::onRefreshButtonClicked()
 {
     qDebug() << "手动刷新设备列表";
     m_deviceList->clear();
-#ifdef HAVE_LIBIMOBILEDEVICE
-    m_statusLabel->setText("正在搜索 iOS 设备...");
     
-    // 调用设备管理器的刷新方法
-    m_deviceManager->refreshDevices();
+    // 检查运行时动态库加载状态
+    LibimobiledeviceDynamic& loader = LibimobiledeviceDynamic::instance();
+    bool isLibraryAvailable = loader.isInitialized();
     
-    // 处理完刷新后，根据结果更新界面
-    QApplication::processEvents(); // 让事件处理完成
-    
-    if (m_deviceManager->getConnectedDevices().isEmpty()) {
-        m_statusLabel->setText("未发现 iOS 设备");
-        m_infoDisplay->setPlainText("未发现 iOS 设备\n\n请确保：\n1. iOS 设备已连接到电脑\n2. 设备已解锁并信任此电脑\n3. iTunes 或其他同步软件已关闭\n\n连接设备后点击【刷新列表】按钮重新检测");
+    if (isLibraryAvailable) {
+        m_statusLabel->setText("正在搜索 iOS 设备...");
+        
+        // 调用设备管理器的刷新方法
+        m_deviceManager->refreshDevices();
+        
+        // 处理完刷新后，根据结果更新界面
+        QApplication::processEvents(); // 让事件处理完成
+        
+        if (m_deviceManager->getConnectedDevices().isEmpty()) {
+            m_statusLabel->setText("未发现 iOS 设备");
+            m_infoDisplay->setPlainText("未发现 iOS 设备\n\n请确保：\n1. iOS 设备已连接到电脑\n2. 设备已解锁并信任此电脑\n3. iTunes 或其他同步软件已关闭\n\n连接设备后点击【刷新列表】按钮重新检测");
+        } else {
+            m_statusLabel->setText(QString("找到 %1 台设备").arg(m_deviceManager->getConnectedDevices().size()));
+        }
     } else {
-        m_statusLabel->setText(QString("找到 %1 台设备").arg(m_deviceManager->getConnectedDevices().size()));
+        m_statusLabel->setText("libimobiledevice 未安装 - 无法连接 iOS 设备");
+        m_infoDisplay->setPlainText("libimobiledevice 未安装\n\n无法连接 iOS 设备。\n\n请安装 libimobiledevice 以支持 iOS 设备连接。\n\n安装方法：\n• macOS: brew install libimobiledevice\n• Ubuntu: sudo apt install libimobiledevice-utils\n• Windows: 请参考项目文档");
     }
-#else
-    m_statusLabel->setText("libimobiledevice 未安装 - 无法连接 iOS 设备");
-#endif
 }
 
 void MainWindow::onGetInfoButtonClicked()
@@ -264,11 +264,9 @@ void MainWindow::updateDeviceInfo(const QString &udid)
      .arg(info.wifiAddress.isEmpty() ? "未知" : info.wifiAddress)
      .arg(info.activationState.isEmpty() ? "未知" : info.activationState)
      .arg(m_deviceManager->isConnected() ? "已连接" : "未连接")
-#ifdef HAVE_LIBIMOBILEDEVICE
-     .arg("libimobiledevice (真实设备支持)");
-#else
-     .arg("libimobiledevice 未安装，无法连接设备");
-#endif
+     .arg(LibimobiledeviceDynamic::instance().isInitialized() ? 
+          "libimobiledevice (动态加载 - 真实设备支持)" : 
+          "libimobiledevice 未安装，无法连接设备");
     
     m_infoDisplay->setPlainText(infoText);
 }
@@ -290,4 +288,19 @@ void MainWindow::updateConnectionStatus()
     }
     
     m_getInfoButton->setEnabled(hasSelection);
+}
+
+void MainWindow::updateInitialDisplayText()
+{
+    // 检查运行时动态库加载状态
+    LibimobiledeviceDynamic& loader = LibimobiledeviceDynamic::instance();
+    bool isLibraryAvailable = loader.isInitialized();
+    
+    if (isLibraryAvailable) {
+        m_infoDisplay->setPlainText("未发现 iOS 设备\n\n请确保：\n1. iOS 设备已连接到电脑\n2. 设备已解锁并信任此电脑\n3. iTunes 或其他同步软件已关闭\n\n连接设备后点击【刷新列表】按钮重新检测");
+        m_statusLabel = new QLabel("正在搜索 iOS 设备...");
+    } else {
+        m_infoDisplay->setPlainText("libimobiledevice 未安装\n\n无法连接 iOS 设备。\n\n请安装 libimobiledevice 以支持 iOS 设备连接。\n\n安装方法：\n• macOS: brew install libimobiledevice\n• Ubuntu: sudo apt install libimobiledevice-utils\n• Windows: 请参考项目文档");
+        m_statusLabel = new QLabel("libimobiledevice 未安装 - 无法连接 iOS 设备");
+    }
 }

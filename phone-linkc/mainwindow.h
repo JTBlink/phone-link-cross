@@ -43,6 +43,7 @@ private:
     void setupUI();
     void updateDeviceInfo(const QString &udid);
     void updateConnectionStatus();
+    void updateInitialDisplayText();
 
     Ui::MainWindow *ui;
     

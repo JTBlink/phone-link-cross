@@ -1,9 +1,21 @@
-cmake_minimum_required(VERSION 3.19)
+﻿cmake_minimum_required(VERSION 3.19)
 
 # 禁用 Qt Creator 的 package manager auto-setup
 # 这些设置必须在 project() 之前
 set(QT_CREATOR_SKIP_PACKAGE_MANAGER_SETUP TRUE CACHE BOOL "" FORCE)
 set(QT_NO_PACKAGE_MANAGER_AUTO_SETUP ON CACHE BOOL "" FORCE)
+
+# Windows Visual Studio 版本兼容性处理
+if(WIN32 AND CMAKE_GENERATOR MATCHES "Visual Studio")
+    # 检测实际安装的Visual Studio版本
+    if(CMAKE_GENERATOR MATCHES "Visual Studio 17 2022")
+        # 如果指定VS 2022但未找到，尝试使用VS 2019
+        if(NOT EXISTS "C:/Program Files/Microsoft Visual Studio/2022")
+            message(STATUS "Visual Studio 2022 未找到，尝试使用 Visual Studio 2019")
+            set(CMAKE_GENERATOR "Visual Studio 16 2019" CACHE STRING "Visual Studio Generator" FORCE)
+        endif()
+    endif()
+endif()
 
 # 如果存在 auto-setup.cmake 路径但文件不存在，则创建一个空的
 if(DEFINED CMAKE_PROJECT_INCLUDE_BEFORE)
@@ -21,6 +33,9 @@ project(phone-linkc LANGUAGES C CXX)
 # 设置 C++ 标准
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# 查找线程库（Windows 上会自动处理）
+find_package(Threads REQUIRED)
 
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Widgets Network)
 
@@ -177,6 +192,7 @@ target_link_libraries(phone-linkc
         Qt::Core
         Qt::Widgets
         Qt::Network
+        Threads::Threads
 )
 
 # MSVC 特定配置
@@ -185,16 +201,19 @@ if(MSVC)
     target_compile_options(phone-linkc PRIVATE 
         /Zc:__cplusplus      # 启用正确的 C++ 标准宏
         /permissive-         # 禁用非标准扩展，启用标准一致性
-        /utf-8               # 使用 UTF-8 编码
+        /utf-8               # 使用 UTF-8 编码（包含源码和执行字符集）
         /W3                  # 警告级别
         /Zc:lambda           # 改进的 lambda 处理
         /std:c++17           # 明确指定 C++17 标准
     )
     
-    # 为了解决 Qt MOC 与 MSVC 2019 的兼容性问题
+    # 为了解决 Qt MOC 与 MSVC 2019 的兼容性问题和中文乱码问题
     target_compile_definitions(phone-linkc PRIVATE
         QT_DISABLE_DEPRECATED_UP_TO=0x060000  # 禁用过时的 API 警告
         _ENABLE_EXTENDED_ALIGNED_STORAGE      # 启用扩展对齐存储支持
+        UNICODE                               # 启用 Unicode 支持
+        _UNICODE                              # 启用 Unicode 支持
+        WIN32_LEAN_AND_MEAN                  # 减少 Windows 头文件包含
     )
     
     # 设置 Windows 子系统（GUI应用）
@@ -205,21 +224,66 @@ if(MSVC)
     )
 endif()
 
-# Windows 特定处理：暂时禁用 libimobiledevice 以避免链接错误
-if(WIN32 AND NOT LIBIMOBILEDEVICE_AVAILABLE)
-    message(STATUS "Windows 环境 - 暂时禁用 libimobiledevice 功能")
-    message(STATUS "原因：thirdparty 目录中只有 DLL 文件，缺少链接所需的 .lib 文件")
-    message(STATUS "应用程序将在没有 iOS 设备支持的情况下构建")
-    message(STATUS "如需启用 iOS 设备支持，请提供对应的 .lib 文件或使用包管理器安装")
-    
-    # 确保禁用状态
-    set(LIBIMOBILEDEVICE_AVAILABLE FALSE)
-    set(IMOBILEDEVICE_FOUND FALSE)
-    set(PLIST_FOUND FALSE)
+# Windows 特定的线程配置
+if(WIN32)
+    # 在 Windows 上使用 Qt 的线程实现，不依赖 pthread
+    target_compile_definitions(phone-linkc PRIVATE
+        QT_THREAD_SUPPORT                    # 启用 Qt 线程支持
+        _WIN32_WINNT=0x0601                  # Windows 7 及以上版本支持
+    )
 endif()
 
-# 如果找到 libimobiledevice，则启用相关功能
-if(LIBIMOBILEDEVICE_AVAILABLE)
+# Windows 特定处理：使用 DLL 动态加载方案
+if(WIN32)
+    # 检查是否存在 thirdparty DLL 文件
+    set(THIRDPARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libimobiledevice")
+    
+    if(EXISTS "${THIRDPARTY_DIR}/imobiledevice.dll" AND EXISTS "${THIRDPARTY_DIR}/plist.dll")
+        message(STATUS "Windows 环境 - 启用 libimobiledevice DLL 动态加载方案")
+        message(STATUS "DLL 路径: ${THIRDPARTY_DIR}")
+        message(STATUS "  - imobiledevice.dll: ${THIRDPARTY_DIR}/imobiledevice.dll")
+        message(STATUS "  - plist.dll: ${THIRDPARTY_DIR}/plist.dll")
+        
+        # 启用 libimobiledevice 支持（通过动态加载）
+        set(LIBIMOBILEDEVICE_AVAILABLE TRUE)
+        set(USE_DYNAMIC_LOADING TRUE)
+        
+        # 添加头文件路径
+        if(EXISTS "${THIRDPARTY_DIR}/include")
+            target_include_directories(phone-linkc PRIVATE "${THIRDPARTY_DIR}/include")
+            message(STATUS "  - 头文件目录: ${THIRDPARTY_DIR}/include")
+        endif()
+        
+        # 定义宏以启用动态加载功能
+        target_compile_definitions(phone-linkc PRIVATE 
+            HAVE_LIBIMOBILEDEVICE
+            LIBIMOBILEDEVICE_DYNAMIC_LOADING
+            WIN32_DYNAMIC_LOADING
+        )
+        
+        # 配置 DLL 部署 - 将 DLL 文件复制到输出目录
+        add_custom_command(TARGET phone-linkc POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${THIRDPARTY_DIR}/"
+            "$<TARGET_FILE_DIR:phone-linkc>/"
+        )
+        
+        message(STATUS "libimobiledevice Windows DLL 动态加载方案已启用")
+        
+    else()
+        message(STATUS "Windows 环境 - 未找到 libimobiledevice DLL 文件")
+        message(STATUS "搜索路径: ${THIRDPARTY_DIR}")
+        message(STATUS "应用程序将在没有 iOS 设备支持的情况下构建")
+        message(STATUS "如需启用 iOS 设备支持，请确保 DLL 文件存在于 thirdparty/libimobiledevice/ 目录")
+        
+        # 禁用状态
+        set(LIBIMOBILEDEVICE_AVAILABLE FALSE)
+        set(USE_DYNAMIC_LOADING FALSE)
+    endif()
+endif()
+
+# 如果找到 libimobiledevice，则启用相关功能（非Windows或macOS）
+if(LIBIMOBILEDEVICE_AVAILABLE AND NOT WIN32)
     # 验证头文件是否真的可以找到 - 使用简单的文件存在检查
     set(HAVE_IDEVICE_HEADER FALSE)
     set(HAVE_PLIST_HEADER FALSE)
@@ -247,37 +311,7 @@ if(LIBIMOBILEDEVICE_AVAILABLE)
     message(STATUS "  - HAVE_IDEVICE_HEADER: ${HAVE_IDEVICE_HEADER}")
     message(STATUS "  - HAVE_PLIST_HEADER: ${HAVE_PLIST_HEADER}")
     
-    # 为 Windows 特殊处理 - 使用运行时库
-    if(WIN32 AND IDEVICE_DLL_FOUND AND PLIST_DLL_FOUND)
-        target_compile_definitions(phone-linkc PRIVATE HAVE_LIBIMOBILEDEVICE)
-        
-        # Windows 上只有在有 .lib 文件时才链接
-        if(USE_LIBIMOBILEDEVICE_LINKING)
-            target_link_libraries(phone-linkc PRIVATE 
-                "${THIRDPARTY_PREFIX}/imobiledevice.lib"
-                "${THIRDPARTY_PREFIX}/plist.lib"
-            )
-            message(STATUS "Linking with .lib files for libimobiledevice")
-        else()
-            # 仅提供头文件支持，不链接库（运行时加载）
-            target_compile_definitions(phone-linkc PRIVATE LIBIMOBILEDEVICE_RUNTIME_LOADING)
-            message(STATUS "Using runtime loading mode for libimobiledevice")
-        endif()
-        
-        # 强制添加头文件包含路径 - Windows需要明确指定
-        target_include_directories(phone-linkc PRIVATE "${THIRDPARTY_PREFIX}/include")
-        message(STATUS "Include directory: ${THIRDPARTY_PREFIX}/include")
-        
-        message(STATUS "libimobiledevice support enabled (Windows)")
-        message(STATUS "  - DLL files: ${THIRDPARTY_PREFIX}/imobiledevice.dll, ${THIRDPARTY_PREFIX}/plist.dll")
-        message(STATUS "  - Header include dir: ${THIRDPARTY_PREFIX}/include")
-        if(USE_LIBIMOBILEDEVICE_LINKING)
-            message(STATUS "  - Link mode: Static linking with .lib files")
-        else()
-            message(STATUS "  - Link mode: Runtime dynamic loading")
-        endif()
-        
-    elseif(HAVE_IDEVICE_HEADER AND HAVE_PLIST_HEADER)
+    if(HAVE_IDEVICE_HEADER AND HAVE_PLIST_HEADER)
         target_compile_definitions(phone-linkc PRIVATE HAVE_LIBIMOBILEDEVICE)
         
         # 链接库 - 直接查找库文件
@@ -326,8 +360,6 @@ if(LIBIMOBILEDEVICE_AVAILABLE)
             target_compile_options(phone-linkc PRIVATE ${PLIST_CFLAGS_OTHER})
         endif()
         
-        # USBMUXD 库已通过上面的 find_library 处理，不需要额外配置
-        
         message(STATUS "libimobiledevice support enabled")
         message(STATUS "  - libimobiledevice include dirs: ${IMOBILEDEVICE_INCLUDE_DIRS}")
         message(STATUS "  - libplist include dirs: ${PLIST_INCLUDE_DIRS}")
@@ -338,7 +370,7 @@ if(LIBIMOBILEDEVICE_AVAILABLE)
         message(STATUS "  - IMOBILEDEVICE_INCLUDE_DIRS: ${IMOBILEDEVICE_INCLUDE_DIRS}")
         message(STATUS "  - PLIST_INCLUDE_DIRS: ${PLIST_INCLUDE_DIRS}")
     endif()
-else()
+elseif(NOT WIN32 AND NOT LIBIMOBILEDEVICE_AVAILABLE)
     message(WARNING "libimobiledevice not found. iOS device features will be disabled.")
     if(PKG_CONFIG_FOUND)
         message(STATUS "pkg-config was found but libimobiledevice/libplist are missing")

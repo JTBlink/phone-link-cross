@@ -49,27 +49,46 @@ bool LibimobiledeviceDynamic::initialize()
 #ifdef _WIN32
     qDebug() << "开始初始化动态库加载器...";
     
-    // 获取应用程序目录和thirdparty目录路径
+    // 获取应用程序目录
     QString appDir = QCoreApplication::applicationDirPath();
-    QString thirdpartyDir = appDir + "/thirdparty/libimobiledevice";
+    QString thirdpartyDir;
     
-    // 检查thirdparty目录是否存在
-    if (!QDir(thirdpartyDir).exists()) {
-        // 如果应用程序目录下没有thirdparty，尝试相对路径
-        thirdpartyDir = appDir + "/../thirdparty/libimobiledevice";
-        if (!QDir(thirdpartyDir).exists()) {
-            qWarning() << "未找到thirdparty目录，尝试其他路径...";
-            // 尝试项目根目录
-            QDir currentDir = QDir::current();
-            thirdpartyDir = currentDir.absoluteFilePath("thirdparty/libimobiledevice");
-            if (!QDir(thirdpartyDir).exists()) {
-                qWarning() << "所有thirdparty路径都不存在";
-                return false;
+    // 搜索路径优先级：
+    // 1. 部署目录中的libimobiledevice（最高优先级）
+    // 2. 应用程序目录下的thirdparty/libimobiledevice
+    // 3. 相对路径的thirdparty/libimobiledevice
+    // 4. 项目根目录的thirdparty/libimobiledevice
+    
+    QStringList searchPaths = {
+        appDir + "/libimobiledevice",                    // 部署目录
+        appDir + "/thirdparty/libimobiledevice",         // 应用程序目录
+        appDir + "/../thirdparty/libimobiledevice",      // 相对路径
+        QDir::current().absoluteFilePath("thirdparty/libimobiledevice")  // 项目根目录
+    };
+    
+    bool found = false;
+    for (const QString& path : searchPaths) {
+        if (QDir(path).exists()) {
+            // 检查关键文件是否存在
+            if (QFile::exists(path + "/imobiledevice.dll") && QFile::exists(path + "/plist.dll")) {
+                thirdpartyDir = path;
+                found = true;
+                qDebug() << "找到libimobiledevice库:" << thirdpartyDir;
+                break;
             }
         }
     }
     
-    qDebug() << "使用thirdparty目录:" << thirdpartyDir;
+    if (!found) {
+        qWarning() << "未找到libimobiledevice库文件";
+        qWarning() << "搜索路径:";
+        for (const QString& path : searchPaths) {
+            qWarning() << "  -" << path;
+        }
+        return false;
+    }
+    
+    qDebug() << "使用libimobiledevice目录:" << thirdpartyDir;
     
     // 临时添加DLL搜索路径
     QString nativePath = QDir::toNativeSeparators(thirdpartyDir);
