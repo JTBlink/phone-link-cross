@@ -4,10 +4,9 @@
 #include <QObject>
 #include <QVariantMap>
 
-#ifdef HAVE_LIBIMOBILEDEVICE
-#include <libimobiledevice/libimobiledevice.h>
-#include <libimobiledevice/lockdown.h>
-#endif
+// Forward declarations for libimobiledevice types (used with dynamic loading)
+typedef struct lockdownd_client_private lockdownd_client_private;
+typedef lockdownd_client_private* lockdownd_client_t;
 
 struct DeviceInfo {
     QString udid;
@@ -39,11 +38,10 @@ public:
     QVariantMap getDetailedInfo(const QString &udid);
 
 private:
-#ifdef HAVE_LIBIMOBILEDEVICE
+    // libimobiledevice辅助方法（动态加载模式）
     QString getStringValue(lockdownd_client_t lockdown, const char* domain, const char* key);
     qint64 getIntValue(lockdownd_client_t lockdown, const char* domain, const char* key);
     bool getBoolValue(lockdownd_client_t lockdown, const char* domain, const char* key);
-#endif
 
     // 模拟设备信息（用于没有 libimobiledevice 的情况）
     DeviceInfo getSimulatedDeviceInfo(const QString &udid);

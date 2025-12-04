@@ -462,9 +462,7 @@ if !errorlevel!==0 (
 call :log_newline
 call :log_message "All dependencies satisfied!"
 call :log_newline
-set /p choice="Continue with build? (y/n): "
-if /i not "!choice!"=="y" goto end
-
+call :log_message "Proceeding with build..."
 call :log_newline
 call :log_message "Building project..."
 call :log_newline

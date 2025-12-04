@@ -5,15 +5,11 @@
 #include <QStringList>
 #include <QVariantMap>
 
-#ifdef HAVE_LIBIMOBILEDEVICE
-// Forward declarations to avoid including headers in header file
+// Forward declarations for libimobiledevice types (used with dynamic loading)
 typedef struct idevice_private idevice_private;
 typedef idevice_private* idevice_t;
 typedef struct lockdownd_client_private lockdownd_client_private;
 typedef lockdownd_client_private* lockdownd_client_t;
-// Forward declare the subscription context
-typedef struct idevice_subscription_context* idevice_subscription_context_t;
-#endif
 
 class DeviceManager : public QObject
 {
@@ -42,17 +38,17 @@ signals:
     void deviceDisconnected();
     void errorOccurred(const QString &error);
 
-
 private:
     QStringList m_knownDevices;
     QString m_currentUdid;
     bool m_isConnected;
-
-#ifdef HAVE_LIBIMOBILEDEVICE
+    
+    // libimobiledevice相关成员（动态加载模式）
     idevice_t m_device;
     lockdownd_client_t m_lockdown;
-    idevice_subscription_context_t m_eventContext;
+    bool m_eventSubscribed;
     
+    // 私有方法
     bool initializeConnection(const QString &udid);
     QString getDeviceName(const QString &udid);
     void cleanup();
@@ -62,8 +58,6 @@ private:
     void startEventSubscription();
     void stopEventSubscription();
     static void deviceEventCallback(const void* event, void* user_data);
-#endif
-
 };
 
 #endif // DEVICEMANAGER_H

@@ -164,6 +164,8 @@ qt_add_executable(phone-linkc
     devicemanager.h
     deviceinfo.cpp  
     deviceinfo.h
+    libimobiledevice_dynamic.cpp
+    libimobiledevice_dynamic.h
 )
 
 # 翻译支持暂时禁用以避免构建问题
@@ -203,80 +205,17 @@ if(MSVC)
     )
 endif()
 
-# Windows 特定处理：如果 pkg-config 没找到，尝试直接使用 thirdparty 路径
+# Windows 特定处理：暂时禁用 libimobiledevice 以避免链接错误
 if(WIN32 AND NOT LIBIMOBILEDEVICE_AVAILABLE)
-    message(STATUS "尝试使用 thirdparty 路径查找 libimobiledevice...")
+    message(STATUS "Windows 环境 - 暂时禁用 libimobiledevice 功能")
+    message(STATUS "原因：thirdparty 目录中只有 DLL 文件，缺少链接所需的 .lib 文件")
+    message(STATUS "应用程序将在没有 iOS 设备支持的情况下构建")
+    message(STATUS "如需启用 iOS 设备支持，请提供对应的 .lib 文件或使用包管理器安装")
     
-    # 设置 thirdparty 路径
-    set(THIRDPARTY_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libimobiledevice")
-    message(STATUS "Thirdparty prefix: ${THIRDPARTY_PREFIX}")
-    
-    # 检查头文件和库文件是否存在
-    set(IDEVICE_HEADER_FOUND FALSE)
-    set(PLIST_HEADER_FOUND FALSE)
-    set(IDEVICE_DLL_FOUND FALSE)
-    set(PLIST_DLL_FOUND FALSE)
-    
-    # 检查 libimobiledevice 头文件（Windows上通常在include子目录）
-    if(EXISTS "${THIRDPARTY_PREFIX}/include/libimobiledevice/libimobiledevice.h")
-        set(IDEVICE_HEADER_FOUND TRUE)
-        message(STATUS "✓ libimobiledevice.h found at ${THIRDPARTY_PREFIX}/include/libimobiledevice/")
-    else()
-        message(STATUS "✗ libimobiledevice.h NOT found at ${THIRDPARTY_PREFIX}/include/libimobiledevice/")
-    endif()
-    
-    # 检查 plist 头文件 - Windows版本中plist头文件通常不存在，只检查libimobiledevice
-    if(EXISTS "${THIRDPARTY_PREFIX}/include/plist/plist.h")
-        set(PLIST_HEADER_FOUND TRUE)
-        message(STATUS "✓ plist.h found at ${THIRDPARTY_PREFIX}/include/plist/")
-    else()
-        # 对于Windows运行时包，plist头文件可能不存在，但功能仍可用
-        set(PLIST_HEADER_FOUND TRUE)
-        message(STATUS "ℹ plist.h not found but assuming available (Windows runtime)")
-    endif()
-    
-    # 检查 DLL 文件
-    if(EXISTS "${THIRDPARTY_PREFIX}/imobiledevice.dll")
-        set(IDEVICE_DLL_FOUND TRUE)
-        message(STATUS "✓ imobiledevice.dll found at ${THIRDPARTY_PREFIX}/")
-    endif()
-    
-    if(EXISTS "${THIRDPARTY_PREFIX}/plist.dll")
-        set(PLIST_DLL_FOUND TRUE)
-        message(STATUS "✓ plist.dll found at ${THIRDPARTY_PREFIX}/")
-    endif()
-    
-    # 如果找到了关键文件，配置 libimobiledevice
-    if(IDEVICE_DLL_FOUND AND PLIST_DLL_FOUND)
-        # 设置包含目录
-        if(IDEVICE_HEADER_FOUND AND PLIST_HEADER_FOUND)
-            set(IMOBILEDEVICE_INCLUDE_DIRS "${THIRDPARTY_PREFIX}/include")
-            set(PLIST_INCLUDE_DIRS "${THIRDPARTY_PREFIX}/include")
-        else()
-            # 如果没有头文件，使用默认路径（某些预编译包可能没有头文件）
-            set(IMOBILEDEVICE_INCLUDE_DIRS "${THIRDPARTY_PREFIX}")
-            set(PLIST_INCLUDE_DIRS "${THIRDPARTY_PREFIX}")
-        endif()
-        
-        # 设置库路径 - Windows 上直接使用 DLL
-        set(IMOBILEDEVICE_LIBRARIES "${THIRDPARTY_PREFIX}/imobiledevice.dll")
-        set(PLIST_LIBRARIES "${THIRDPARTY_PREFIX}/plist.dll")
-        
-        # 设置找到标志
-        set(IMOBILEDEVICE_FOUND TRUE)
-        set(PLIST_FOUND TRUE)
-        set(LIBIMOBILEDEVICE_AVAILABLE TRUE)
-        
-        message(STATUS "通过 thirdparty 路径找到 libimobiledevice")
-        message(STATUS "  - Include dirs: ${IMOBILEDEVICE_INCLUDE_DIRS}")
-        message(STATUS "  - Libraries: ${IMOBILEDEVICE_LIBRARIES} ${PLIST_LIBRARIES}")
-    else()
-        message(WARNING "thirdparty 路径下未找到完整的 libimobiledevice 库")
-        message(STATUS "  - imobiledevice.dll: ${IDEVICE_DLL_FOUND}")
-        message(STATUS "  - plist.dll: ${PLIST_DLL_FOUND}")
-        message(STATUS "  - libimobiledevice.h: ${IDEVICE_HEADER_FOUND}")
-        message(STATUS "  - plist.h: ${PLIST_HEADER_FOUND}")
-    endif()
+    # 确保禁用状态
+    set(LIBIMOBILEDEVICE_AVAILABLE FALSE)
+    set(IMOBILEDEVICE_FOUND FALSE)
+    set(PLIST_FOUND FALSE)
 endif()
 
 # 如果找到 libimobiledevice，则启用相关功能
@@ -312,23 +251,31 @@ if(LIBIMOBILEDEVICE_AVAILABLE)
     if(WIN32 AND IDEVICE_DLL_FOUND AND PLIST_DLL_FOUND)
         target_compile_definitions(phone-linkc PRIVATE HAVE_LIBIMOBILEDEVICE)
         
-        # Windows 上直接链接 DLL 文件
-        target_link_libraries(phone-linkc PRIVATE 
-            "${THIRDPARTY_PREFIX}/imobiledevice.dll"
-            "${THIRDPARTY_PREFIX}/plist.dll"
-        )
+        # Windows 上只有在有 .lib 文件时才链接
+        if(USE_LIBIMOBILEDEVICE_LINKING)
+            target_link_libraries(phone-linkc PRIVATE 
+                "${THIRDPARTY_PREFIX}/imobiledevice.lib"
+                "${THIRDPARTY_PREFIX}/plist.lib"
+            )
+            message(STATUS "Linking with .lib files for libimobiledevice")
+        else()
+            # 仅提供头文件支持，不链接库（运行时加载）
+            target_compile_definitions(phone-linkc PRIVATE LIBIMOBILEDEVICE_RUNTIME_LOADING)
+            message(STATUS "Using runtime loading mode for libimobiledevice")
+        endif()
         
         # 强制添加头文件包含路径 - Windows需要明确指定
         target_include_directories(phone-linkc PRIVATE "${THIRDPARTY_PREFIX}/include")
-        message(STATUS "Forced include directory: ${THIRDPARTY_PREFIX}/include")
+        message(STATUS "Include directory: ${THIRDPARTY_PREFIX}/include")
         
-        # 验证路径设置
-        get_target_property(INCLUDE_DIRS phone-linkc INTERFACE_INCLUDE_DIRECTORIES)
-        message(STATUS "Target include directories: ${INCLUDE_DIRS}")
-        
-        message(STATUS "libimobiledevice support enabled (Windows runtime libraries)")
-        message(STATUS "  - DLL Libraries: ${THIRDPARTY_PREFIX}/imobiledevice.dll ${THIRDPARTY_PREFIX}/plist.dll")
+        message(STATUS "libimobiledevice support enabled (Windows)")
+        message(STATUS "  - DLL files: ${THIRDPARTY_PREFIX}/imobiledevice.dll, ${THIRDPARTY_PREFIX}/plist.dll")
         message(STATUS "  - Header include dir: ${THIRDPARTY_PREFIX}/include")
+        if(USE_LIBIMOBILEDEVICE_LINKING)
+            message(STATUS "  - Link mode: Static linking with .lib files")
+        else()
+            message(STATUS "  - Link mode: Runtime dynamic loading")
+        endif()
         
     elseif(HAVE_IDEVICE_HEADER AND HAVE_PLIST_HEADER)
         target_compile_definitions(phone-linkc PRIVATE HAVE_LIBIMOBILEDEVICE)
