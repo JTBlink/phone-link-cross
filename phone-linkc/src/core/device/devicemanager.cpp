@@ -1,5 +1,5 @@
 #include "devicemanager.h"
-#include "libimobiledevice_dynamic.h"
+#include "platform/libimobiledevice_dynamic.h"
 #include <QDebug>
 #include <QRandomGenerator>
 #include <QMetaObject>

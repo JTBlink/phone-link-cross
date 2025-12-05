@@ -1,5 +1,5 @@
 #include "deviceinfo.h"
-#include "libimobiledevice_dynamic.h"
+#include "platform/libimobiledevice_dynamic.h"
 #include <QDebug>
 
 QVariantMap DeviceInfo::toMap() const

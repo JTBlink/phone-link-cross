@@ -83,6 +83,10 @@ echo.
 goto :eof
 
 :main_logic
+REM Set default build configuration to Debug
+set "BUILD_CONFIG=Debug"
+set "CMAKE_BUILD_TYPE=Debug"
+
 REM Parse build type parameter
 if /i "%1"=="debug" (
     set "BUILD_CONFIG=Debug"
@@ -193,7 +197,7 @@ if "%CMAKE_GENERATOR%"=="Visual Studio 17 2022" (
     cmake --build . --config %BUILD_CONFIG% --parallel
 ) else if "%CMAKE_GENERATOR%"=="Visual Studio 16 2019" (
     echo [INFO]   cmake --build . --config %BUILD_CONFIG% --parallel
-    cmake --build . --config %BUILD_CONFIG% --parallel  
+    cmake --build . --config %BUILD_CONFIG% --parallel
 ) else (
     echo [INFO]   cmake --build . --config %BUILD_CONFIG%
     cmake --build . --config %BUILD_CONFIG%

@@ -169,18 +169,42 @@ endif()
 
 qt_standard_project_setup()
 
+# 定义源文件目录
+set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# 定义源文件
+set(SOURCES
+    # Main
+    ${SRC_DIR}/main.cpp
+    
+    # UI Layer
+    ${SRC_DIR}/ui/mainwindow.cpp
+    ${SRC_DIR}/ui/mainwindow.h
+    ${SRC_DIR}/ui/mainwindow.ui
+    
+    # Core - Device Management
+    ${SRC_DIR}/core/device/devicemanager.cpp
+    ${SRC_DIR}/core/device/devicemanager.h
+    ${SRC_DIR}/core/device/deviceinfo.cpp
+    ${SRC_DIR}/core/device/deviceinfo.h
+    
+    # Platform Layer
+    ${SRC_DIR}/platform/libimobiledevice_dynamic.cpp
+    ${SRC_DIR}/platform/libimobiledevice_dynamic.h
+)
+
 qt_add_executable(phone-linkc
     WIN32 MACOSX_BUNDLE
-    main.cpp
-    mainwindow.cpp
-    mainwindow.h
-    mainwindow.ui
-    devicemanager.cpp
-    devicemanager.h
-    deviceinfo.cpp  
-    deviceinfo.h
-    libimobiledevice_dynamic.cpp
-    libimobiledevice_dynamic.h
+    ${SOURCES}
+)
+
+# 设置头文件包含目录
+target_include_directories(phone-linkc PRIVATE
+    ${SRC_DIR}
+    ${SRC_DIR}/ui
+    ${SRC_DIR}/core
+    ${SRC_DIR}/core/device
+    ${SRC_DIR}/platform
 )
 
 # 翻译支持暂时禁用以避免构建问题

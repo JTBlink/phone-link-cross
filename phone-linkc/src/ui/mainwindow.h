@@ -11,8 +11,8 @@
 #include <QLabel>
 #include <QStatusBar>
 
-#include "devicemanager.h"
-#include "deviceinfo.h"
+#include "core/device/devicemanager.h"
+#include "core/device/deviceinfo.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
