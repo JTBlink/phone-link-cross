@@ -2,6 +2,8 @@
 #include "libimobiledevice_dynamic.h"
 #include <QDebug>
 #include <QRandomGenerator>
+#include <QMetaObject>
+#include <QCoreApplication>
 
 DeviceManager::DeviceManager(QObject *parent)
     : QObject(parent)
@@ -226,7 +228,8 @@ QString DeviceManager::getDeviceName(const QString &udid)
                         loader.plist_get_string_val(value, &str_value);
                         if (str_value) {
                             name = QString::fromUtf8(str_value);
-                            free(str_value);
+                            // 不要调用 free()，因为 plist_get_string_val 分配的内存
+                            // 会在 plist_free() 时一起释放
                         }
                     }
                 }
@@ -318,34 +321,44 @@ void DeviceManager::deviceEventCallback(const void* event, void* user_data)
     if (device_event->event == IDEVICE_DEVICE_ADD) {
         qDebug() << "USB 事件：设备连接" << udid;
         
-        // 直接处理设备连接事件
-        if (!manager->m_knownDevices.contains(udid)) {
-            QString deviceName = manager->getDeviceName(udid);
-            manager->m_knownDevices << udid;
-            emit manager->deviceFound(udid, deviceName);
-        }
+        // 使用线程安全的方式在主线程中处理设备连接事件
+        QMetaObject::invokeMethod(manager, [manager, udid]() {
+            if (!manager->m_knownDevices.contains(udid)) {
+                QString deviceName = manager->getDeviceName(udid);
+                manager->m_knownDevices << udid;
+                qDebug() << "主线程处理：发现新设备" << udid << "名称:" << deviceName;
+                emit manager->deviceFound(udid, deviceName);
+            }
+        }, Qt::QueuedConnection);
         
     } else if (device_event->event == IDEVICE_DEVICE_REMOVE) {
         qDebug() << "USB 事件：设备断开" << udid;
         
-        // 从已知设备列表中移除
-        if (manager->m_knownDevices.contains(udid)) {
-            manager->m_knownDevices.removeAll(udid);
-            emit manager->deviceLost(udid);
-            
-            // 如果是当前连接的设备断开了
-            if (udid == manager->m_currentUdid) {
-                manager->disconnectFromDevice();
+        // 使用线程安全的方式在主线程中处理设备断开事件
+        QMetaObject::invokeMethod(manager, [manager, udid]() {
+            if (manager->m_knownDevices.contains(udid)) {
+                manager->m_knownDevices.removeAll(udid);
+                qDebug() << "主线程处理：设备断开连接" << udid;
+                emit manager->deviceLost(udid);
+                
+                // 如果是当前连接的设备断开了
+                if (udid == manager->m_currentUdid) {
+                    manager->disconnectFromDevice();
+                }
             }
-        }
+        }, Qt::QueuedConnection);
         
     } else if (device_event->event == IDEVICE_DEVICE_PAIRED) {
         qDebug() << "USB 事件：设备配对" << udid;
-        // 设备配对后直接处理
-        if (!manager->m_knownDevices.contains(udid)) {
-            QString deviceName = manager->getDeviceName(udid);
-            manager->m_knownDevices << udid;
-            emit manager->deviceFound(udid, deviceName);
-        }
+        
+        // 使用线程安全的方式在主线程中处理设备配对事件
+        QMetaObject::invokeMethod(manager, [manager, udid]() {
+            if (!manager->m_knownDevices.contains(udid)) {
+                QString deviceName = manager->getDeviceName(udid);
+                manager->m_knownDevices << udid;
+                qDebug() << "主线程处理：设备配对" << udid << "名称:" << deviceName;
+                emit manager->deviceFound(udid, deviceName);
+            }
+        }, Qt::QueuedConnection);
     }
 }

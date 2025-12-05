@@ -54,14 +54,15 @@ bool LibimobiledeviceDynamic::initialize()
     QString thirdpartyDir;
     
     // 搜索路径优先级：
-    // 1. 部署目录中的libimobiledevice（最高优先级）
-    // 2. 应用程序目录下的thirdparty/libimobiledevice
-    // 3. 相对路径的thirdparty/libimobiledevice
-    // 4. 项目根目录的thirdparty/libimobiledevice
+    // 1. 应用程序目录本身（构建目录中的库文件）
+    // 2. 部署目录中的libimobiledevice
+    // 3. 应用程序目录下的thirdparty/libimobiledevice
+    // 4. 相对路径的thirdparty/libimobiledevice
+    // 5. 项目根目录的thirdparty/libimobiledevice
     
     QStringList searchPaths = {
+        appDir,                                          // 应用程序目录本身（最高优先级）
         appDir + "/libimobiledevice",                    // 部署目录
-        appDir + "/thirdparty/libimobiledevice",         // 应用程序目录
         appDir + "/../thirdparty/libimobiledevice",      // 相对路径
         QDir::current().absoluteFilePath("thirdparty/libimobiledevice")  // 项目根目录
     };

@@ -1,8 +1,83 @@
 # libimobiledevice API接口明细说明
 
+> 📚 **完整开发参考** - phone-linkc项目专用libimobiledevice API文档
+
+## 目录
+
+- [概述](#概述)
+- [目录结构](#目录结构)
+- [版本兼容性](#版本兼容性)
+- [动态库加载机制](#动态库加载机制)
+  - [LibimobiledeviceDynamic类](#libimobiledevicedynamic类)
+  - [使用动态加载的最佳实践](#使用动态加载的最佳实践)
+  - [库文件搜索路径](#库文件搜索路径)
+  - [部署优势](#部署优势)
+  - [动态加载实现细节](#动态加载实现细节)
+- [核心API模块](#核心api模块)
+  - [1. 设备管理 API (libimobiledevice)](#1-设备管理-api-libimobiledevice)
+    - [1.1 设备枚举与连接](#11-设备枚举与连接)
+    - [1.2 设备事件监听](#12-设备事件监听)
+    - [1.3 设备信息获取](#13-设备信息获取)
+  - [2. Lockdown服务 API (lockdownd)](#2-lockdown服务-api-lockdownd)
+    - [2.1 客户端连接](#21-客户端连接)
+    - [2.2 设备属性操作](#22-设备属性操作)
+    - [2.3 服务管理](#23-服务管理)
+  - [3. 屏幕截图 API (screenshotr)](#3-屏幕截图-api-screenshotr)
+    - [3.1 截图服务](#31-截图服务)
+    - [3.2 屏幕镜像实现](#32-屏幕镜像实现)
+  - [4. 应用安装 API (installation_proxy)](#4-应用安装-api-installation_proxy)
+    - [4.1 应用管理服务](#41-应用管理服务)
+    - [4.2 应用安装与卸载](#42-应用安装与卸载)
+    - [4.3 应用信息获取](#43-应用信息获取)
+  - [5. 文件传输 API (afc)](#5-文件传输-api-afc)
+    - [5.1 文件系统访问](#51-文件系统访问)
+    - [5.2 文件操作进阶](#52-文件操作进阶)
+    - [5.3 应用沙箱访问](#53-应用沙箱访问)
+  - [6. 系统日志 API (syslog_relay)](#6-系统日志-api-syslog_relay)
+    - [6.1 日志监控](#61-日志监控)
+    - [6.2 日志过滤与分析](#62-日志过滤与分析)
+  - [7. 移动备份 API (mobilebackup2)](#7-移动备份-api-mobilebackup2)
+    - [7.1 备份服务](#71-备份服务)
+    - [7.2 备份操作示例](#72-备份操作示例)
+  - [8. 通知代理 API (notification_proxy)](#8-通知代理-api-notification_proxy)
+    - [8.1 通知服务](#81-通知服务)
+    - [8.2 通知事件处理](#82-通知事件处理)
+- [属性列表 (plist) API](#属性列表-plist-api)
+  - [plist_t 数据类型操作](#plist_t-数据类型操作)
+  - [高级plist操作](#高级plist操作)
+- [错误处理](#错误处理)
+  - [错误代码定义](#错误代码定义)
+  - [错误处理最佳实践](#错误处理最佳实践)
+  - [故障排除指南](#故障排除指南)
+- [线程安全注意事项](#线程安全注意事项)
+  - [API线程安全性](#api线程安全性)
+  - [最佳实践](#最佳实践)
+- [性能优化建议](#性能优化建议)
+  - [1. 连接复用](#1-连接复用)
+  - [2. 异步操作](#2-异步操作)
+  - [3. 内存管理](#3-内存管理)
+  - [4. 批量操作](#4-批量操作)
+- [高级API模块](#高级api模块)
+  - [7. 移动备份 API (mobilebackup2)](#7-移动备份-api-mobilebackup2)
+  - [8. 春天板服务 API (springboard)](#8-春天板服务-api-springboard)
+  - [9. 诊断中继 API (diagnostics_relay)](#9-诊断中继-api-diagnostics_relay)
+  - [10. 通知代理 API (notification_proxy)](#10-通知代理-api-notification_proxy)
+- [phone-linkc项目集成](#phone-linkc项目集成)
+  - [项目结构中的使用模式](#项目结构中的使用模式)
+- [调试和诊断](#调试和诊断)
+  - [启用调试输出](#启用调试输出)
+  - [常见问题诊断](#常见问题诊断)
+  - [性能监控和分析](#性能监控和分析)
+- [实用示例集合](#实用示例集合)
+  - [设备管理完整示例](#设备管理完整示例)
+  - [应用管理完整示例](#应用管理完整示例)
+  - [文件传输完整示例](#文件传输完整示例)
+
 ## 概述
 
 本文档详细说明了libimobiledevice库的核心API接口，包括函数原型、参数说明、返回值和使用示例。该文档专门针对phone-linkc项目进行优化，提供实际项目中的最佳实践。
+
+> 💡 **提示**: phone-linkc项目采用动态库加载方式，无需在编译时链接静态库，提高了部署的灵活性和兼容性。
 
 ## 目录结构
 
@@ -664,6 +739,124 @@ lockdownd_error_t lockdownd_set_value(lockdownd_client_t client,
 - `key`: 属性键名
 - `value`: 要设置的属性值
 
+**使用示例**:
+```cpp
+// 设置设备名称（需要设备已信任此电脑）
+bool setDeviceName(lockdownd_client_t client, const QString& newName) {
+    if (!client || newName.isEmpty()) {
+        return false;
+    }
+    
+    plist_t name_value = plist_new_string(newName.toUtf8().constData());
+    if (!name_value) {
+        return false;
+    }
+    
+    lockdownd_error_t error = lockdownd_set_value(client, NULL, "DeviceName", name_value);
+    plist_free(name_value);
+    
+    return error == LOCKDOWN_E_SUCCESS;
+}
+```
+
+#### 2.3 服务管理
+
+##### lockdownd_start_service()
+```c
+lockdownd_error_t lockdownd_start_service(lockdownd_client_t client,
+                                          const char *service_name,
+                                          lockdownd_service_descriptor_t *service);
+```
+
+**功能描述**: 启动指定的设备服务
+
+**参数说明**:
+- `client`: lockdown客户端句柄
+- `service_name`: 服务名称（如"com.apple.afc"）
+- `service`: 输出参数，服务描述符
+
+**返回值**:
+- `LOCKDOWN_E_SUCCESS`: 服务启动成功
+- `LOCKDOWN_E_INVALID_SERVICE`: 服务名称无效
+- `LOCKDOWN_E_START_SERVICE_FAILED`: 服务启动失败
+
+**常用服务名称**:
+- `com.apple.afc`: 文件传输服务
+- `com.apple.mobile.screenshotr`: 屏幕截图服务
+- `com.apple.mobile.installation_proxy`: 应用安装服务
+- `com.apple.syslog_relay`: 系统日志服务
+- `com.apple.mobile.notification_proxy`: 通知代理服务
+- `com.apple.springboardservices`: SpringBoard服务
+- `com.apple.mobile.diagnostics_relay`: 诊断中继服务
+
+**使用示例**:
+```cpp
+// 启动AFC服务并检查是否成功
+bool startAFCService(idevice_t device, lockdownd_client_t lockdown, uint16_t *port) {
+    lockdownd_service_descriptor_t service = NULL;
+    lockdownd_error_t error = lockdownd_start_service(lockdown, "com.apple.afc", &service);
+    
+    if (error != LOCKDOWN_E_SUCCESS || !service) {
+        qWarning() << "启动AFC服务失败:" << error;
+        return false;
+    }
+    
+    *port = service->port;
+    
+    // 必须释放服务描述符
+    lockdownd_service_descriptor_free(service);
+    return true;
+}
+```
+
+##### lockdownd_client_free()
+```c
+lockdownd_error_t lockdownd_client_free(lockdownd_client_t client);
+```
+
+**功能描述**: 释放lockdown客户端资源
+
+**参数说明**:
+- `client`: 要释放的客户端句柄
+
+**返回值**:
+- `LOCKDOWN_E_SUCCESS`: 释放成功
+
+##### lockdownd_service_descriptor_free()
+```c
+void lockdownd_service_descriptor_free(lockdownd_service_descriptor_t service);
+```
+
+**功能描述**: 释放服务描述符资源
+
+**参数说明**:
+- `service`: 要释放的服务描述符
+
+**服务检查示例**:
+```cpp
+// 检查服务是否可用
+bool isServiceAvailable(idevice_t device, const QString& serviceName) {
+    lockdownd_client_t lockdown = NULL;
+    
+    if (lockdownd_client_new_with_handshake(device, &lockdown, "phone-linkc") != LOCKDOWN_E_SUCCESS) {
+        return false;
+    }
+    
+    lockdownd_service_descriptor_t service = NULL;
+    lockdownd_error_t error = lockdownd_start_service(lockdown, serviceName.toUtf8().constData(), &service);
+    
+    bool available = (error == LOCKDOWN_E_SUCCESS && service != NULL);
+    
+    if (service) {
+        lockdownd_service_descriptor_free(service);
+    }
+    
+    lockdownd_client_free(lockdown);
+    
+    return available;
+}
+```
+
 ### 3. 屏幕截图 API (screenshotr)
 
 #### 3.1 截图服务
@@ -724,6 +917,348 @@ if (error == SCREENSHOTR_E_SUCCESS) {
     }
     screenshotr_client_free(screenshotr);
 }
+```
+
+##### screenshotr_client_free()
+```c
+screenshotr_error_t screenshotr_client_free(screenshotr_client_t client);
+```
+
+**功能描述**: 释放截图服务客户端资源
+
+**参数说明**:
+- `client`: 截图客户端句柄
+
+**返回值**:
+- `SCREENSHOTR_E_SUCCESS`: 释放成功
+
+#### 3.2 屏幕镜像实现
+
+屏幕镜像功能需要通过持续截图实现，推荐使用独立线程处理，避免阻塞主线程。
+
+**基础屏幕镜像实现**:
+
+```cpp
+// 屏幕镜像工作线程
+class ScreenMirrorWorker : public QThread {
+    Q_OBJECT
+    
+private:
+    idevice_t device_;
+    bool running_;
+    int targetFps_;
+    
+public:
+    explicit ScreenMirrorWorker(idevice_t device, QObject *parent = nullptr)
+        : QThread(parent), device_(device), running_(false), targetFps_(30) {
+    }
+    
+    void setTargetFps(int fps) {
+        targetFps_ = qMax(1, qMin(60, fps)); // 限制在1-60fps之间
+    }
+    
+    void stopMirroring() {
+        running_ = false;
+        wait(); // 等待线程结束
+    }
+    
+protected:
+    void run() override {
+        running_ = true;
+        
+        screenshotr_client_t screenshotr = nullptr;
+        screenshotr_error_t error = screenshotr_client_start_service(device_, &screenshotr, "phone-linkc");
+        
+        if (error != SCREENSHOTR_E_SUCCESS) {
+            emit errorOccurred(QString("启动截图服务失败: %1").arg(error));
+            return;
+        }
+        
+        // 计算帧间隔
+        const int frameInterval = 1000 / targetFps_;
+        QElapsedTimer frameTimer;
+        
+        while (running_) {
+            frameTimer.start();
+            
+            char *imgdata = nullptr;
+            uint64_t imgsize = 0;
+            
+            error = screenshotr_take_screenshot(screenshotr, &imgdata, &imgsize);
+            
+            if (error == SCREENSHOTR_E_SUCCESS && imgdata) {
+                // 创建QImage并转换为RGB格式以提高性能
+                QImage screenshot = QImage::fromData(reinterpret_cast<const uchar*>(imgdata), 
+                                                  static_cast<int>(imgsize), "PNG");
+                
+                if (!screenshot.isNull()) {
+                    emit frameReady(screenshot);
+                }
+                
+                free(imgdata);
+            } else {
+                qWarning() << "截图失败:" << error;
+                // 连续失败多次则停止镜像
+                static int failureCount = 0;
+                if (++failureCount > 5) {
+                    emit errorOccurred("连续截图失败，停止屏幕镜像");
+                    break;
+                }
+            }
+            
+            // 控制帧率
+            int elapsed = frameTimer.elapsed();
+            if (elapsed < frameInterval) {
+                msleep(frameInterval - elapsed);
+            }
+        }
+        
+        screenshotr_client_free(screenshotr);
+    }
+    
+signals:
+    void frameReady(const QImage& frame);
+    void errorOccurred(const QString& message);
+};
+
+// 主窗口中的屏幕镜像控制
+class MainWindow : public QMainWindow {
+    Q_OBJECT
+    
+private:
+    ScreenMirrorWorker *mirrorWorker_;
+    QLabel *screenLabel_;
+    
+public slots:
+    void startScreenMirroring() {
+        if (mirrorWorker_ && mirrorWorker_->isRunning()) {
+            // 已经在镜像，停止
+            stopScreenMirroring();
+            return;
+        }
+        
+        idevice_t device = deviceManager_->getCurrentDevice();
+        if (!device) {
+            QMessageBox::warning(this, "错误", "未连接设备");
+            return;
+        }
+        
+        mirrorWorker_ = new ScreenMirrorWorker(device, this);
+        
+        connect(mirrorWorker_, &ScreenMirrorWorker::frameReady, 
+                this, [this](const QImage& frame) {
+                    // 调整图像大小以适应显示区域
+                    QPixmap pixmap = QPixmap::fromImage(frame);
+                    if (screenLabel_) {
+                        screenLabel_->setPixmap(pixmap.scaled(
+                            screenLabel_->size(), 
+                            Qt::KeepAspectRatio, 
+                            Qt::SmoothTransformation));
+                    }
+                });
+        
+        connect(mirrorWorker_, &ScreenMirrorWorker::errorOccurred,
+                this, &MainWindow::onMirrorError);
+        
+        mirrorWorker_->start();
+        statusBar()->showMessage("屏幕镜像已启动");
+    }
+    
+    void stopScreenMirroring() {
+        if (mirrorWorker_) {
+            mirrorWorker_->stopMirroring();
+            mirrorWorker_->deleteLater();
+            mirrorWorker_ = nullptr;
+            statusBar()->showMessage("屏幕镜像已停止");
+        }
+    }
+    
+    void onMirrorError(const QString& message) {
+        qWarning() << "屏幕镜像错误:" << message;
+        stopScreenMirroring();
+        statusBar()->showMessage("屏幕镜像出错: " + message);
+    }
+};
+```
+
+**高级屏幕镜像功能**:
+
+```cpp
+// 增强的屏幕镜像工作器，支持性能监控和图像处理
+class EnhancedScreenMirrorWorker : public ScreenMirrorWorker {
+    Q_OBJECT
+    
+private:
+    // 性能监控
+    QElapsedTimer performanceTimer_;
+    qint64 totalFrames_;
+    qint64 totalProcessingTime_;
+    qint64 minFrameTime_;
+    qint64 maxFrameTime_;
+    
+    // 图像处理
+    bool enableProcessing_;
+    int brightness_;
+    int contrast_;
+    bool enableGrayscale_;
+    QImage::Format targetFormat_;
+    
+public:
+    explicit EnhancedScreenMirrorWorker(idevice_t device, QObject *parent = nullptr)
+        : ScreenMirrorWorker(device, parent)
+        , totalFrames_(0), totalProcessingTime_(0)
+        , minFrameTime_(LLONG_MAX), maxFrameTime_(0)
+        , enableProcessing_(false), brightness_(0), contrast_(0)
+        , enableGrayscale_(false), targetFormat_(QImage::Format_RGB32) {
+        
+        performanceTimer_.start();
+    }
+    
+    // 图像处理设置
+    void setImageProcessing(bool enable, int brightness = 0, int contrast = 0, bool grayscale = false) {
+        enableProcessing_ = enable;
+        brightness_ = brightness;
+        contrast_ = contrast;
+        enableGrayscale_ = grayscale;
+    }
+    
+    void setTargetFormat(QImage::Format format) {
+        targetFormat_ = format;
+    }
+    
+    // 获取性能统计
+    struct PerformanceStats {
+        qint64 avgFrameTime;
+        qint64 minFrameTime;
+        qint64 maxFrameTime;
+        qint64 avgFps;
+        qint64 totalFrames;
+        qint64 totalTime;
+    };
+    
+    PerformanceStats getPerformanceStats() const {
+        PerformanceStats stats;
+        if (totalFrames_ > 0) {
+            stats.avgFrameTime = totalProcessingTime_ / totalFrames_;
+            stats.minFrameTime = minFrameTime_;
+            stats.maxFrameTime = maxFrameTime_;
+            stats.avgFps = totalFrames_ * 1000 / totalProcessingTime_;
+            stats.totalFrames = totalFrames_;
+            stats.totalTime = totalProcessingTime_;
+        }
+        return stats;
+    }
+    
+protected:
+    void run() override {
+        running_ = true;
+        
+        screenshotr_client_t screenshotr = nullptr;
+        screenshotr_error_t error = screenshotr_client_start_service(device_, &screenshotr, "phone-linkc");
+        
+        if (error != SCREENSHOTR_E_SUCCESS) {
+            emit errorOccurred(QString("启动截图服务失败: %1").arg(error));
+            return;
+        }
+        
+        const int frameInterval = 1000 / targetFps_;
+        QElapsedTimer frameTimer;
+        
+        while (running_) {
+            frameTimer.start();
+            
+            char *imgdata = nullptr;
+            uint64_t imgsize = 0;
+            
+            error = screenshotr_take_screenshot(screenshotr, &imgdata, &imgsize);
+            
+            if (error == SCREENSHOTR_E_SUCCESS && imgdata) {
+                // 创建QImage
+                QImage screenshot = QImage::fromData(reinterpret_cast<const uchar*>(imgdata), 
+                                                  static_cast<int>(imgsize), "PNG");
+                
+                if (!screenshot.isNull()) {
+                    // 转换格式（如果需要）
+                    if (screenshot.format() != targetFormat_) {
+                        screenshot = screenshot.convertToFormat(targetFormat_);
+                    }
+                    
+                    // 应用图像处理
+                    if (enableProcessing_) {
+                        processImage(screenshot);
+                    }
+                    
+                    // 更新性能统计
+                    qint64 frameTime = frameTimer.elapsed();
+                    updatePerformanceStats(frameTime);
+                    
+                    emit frameReady(screenshot);
+                    emit performanceUpdated(getPerformanceStats());
+                }
+                
+                free(imgdata);
+            } else {
+                qWarning() << "截图失败:" << error;
+                static int failureCount = 0;
+                if (++failureCount > 5) {
+                    emit errorOccurred("连续截图失败，停止屏幕镜像");
+                    break;
+                }
+            }
+            
+            // 控制帧率
+            int elapsed = frameTimer.elapsed();
+            if (elapsed < frameInterval) {
+                msleep(frameInterval - elapsed);
+            }
+        }
+        
+        screenshotr_client_free(screenshotr);
+    }
+    
+private:
+    void processImage(QImage& image) {
+        // 调整亮度和对比度
+        if (brightness_ != 0 || contrast_ != 0) {
+            for (int y = 0; y < image.height(); ++y) {
+                QRgb* scanLine = reinterpret_cast<QRgb*>(image.scanLine(y));
+                for (int x = 0; x < image.width(); ++x) {
+                    int r = qRed(scanLine[x]);
+                    int g = qGreen(scanLine[x]);
+                    int b = qBlue(scanLine[x]);
+                    
+                    // 应用亮度和对比度
+                    r = qBound(0, (r - 128) * (contrast_ + 100) / 100 + 128 + brightness_, 255);
+                    g = qBound(0, (g - 128) * (contrast_ + 100) / 100 + 128 + brightness_, 255);
+                    b = qBound(0, (b - 128) * (contrast_ + 100) / 100 + 128 + brightness_, 255);
+                    
+                    scanLine[x] = qRgb(r, g, b);
+                }
+            }
+        }
+        
+        // 转换为灰度
+        if (enableGrayscale_) {
+            for (int y = 0; y < image.height(); ++y) {
+                QRgb* scanLine = reinterpret_cast<QRgb*>(image.scanLine(y));
+                for (int x = 0; x < image.width(); ++x) {
+                    int gray = qGray(scanLine[x]);
+                    scanLine[x] = qRgb(gray, gray, gray);
+                }
+            }
+        }
+    }
+    
+    void updatePerformanceStats(qint64 frameTime) {
+        totalFrames_++;
+        totalProcessingTime_ += frameTime;
+        minFrameTime_ = qMin(minFrameTime_, frameTime);
+        maxFrameTime_ = qMax(maxFrameTime_, frameTime);
+    }
+    
+signals:
+    void performanceUpdated(const PerformanceStats& stats);
+};
 ```
 
 ### 4. 应用安装 API (installation_proxy)
@@ -884,6 +1419,447 @@ afc_error_t afc_file_read(afc_client_t client,
 
 **功能描述**: 读取文件数据
 
+#### 5.2 文件操作进阶
+
+##### afc_get_file_info()
+```c
+afc_error_t afc_get_file_info(afc_client_t client,
+                              const char *path,
+                              char ***file_info);
+```
+
+**功能描述**: 获取文件详细信息
+
+**参数说明**:
+- `client`: AFC客户端句柄
+- `path`: 文件路径
+- `file_info`: 输出参数，文件信息键值对数组
+
+**返回值**:
+- `AFC_E_SUCCESS`: 获取成功
+
+**使用示例**:
+```cpp
+// 获取文件大小和修改时间
+qint64 getFileSize(afc_client_t afc, const QString& filePath) {
+    char **info = nullptr;
+    qint64 size = 0;
+    
+    if (afc_get_file_info(afc, filePath.toUtf8().constData(), &info) == AFC_E_SUCCESS) {
+        for (int i = 0; info[i]; i += 2) {
+            if (QString(info[i]) == "st_size" && info[i+1]) {
+                size = QString(info[i+1]).toLongLong();
+                break;
+            }
+        }
+        afc_dictionary_free(info);
+    }
+    
+    return size;
+}
+
+QDateTime getFileModificationTime(afc_client_t afc, const QString& filePath) {
+    char **info = nullptr;
+    QDateTime time;
+    
+    if (afc_get_file_info(afc, filePath.toUtf8().constData(), &info) == AFC_E_SUCCESS) {
+        for (int i = 0; info[i]; i += 2) {
+            if (QString(info[i]) == "st_mtime" && info[i+1]) {
+                time = QDateTime::fromSecsSinceEpoch(QString(info[i+1]).toLongLong());
+                break;
+            }
+        }
+        afc_dictionary_free(info);
+    }
+    
+    return time;
+}
+```
+
+##### afc_make_directory()
+```c
+afc_error_t afc_make_directory(afc_client_t client,
+                              const char *path);
+```
+
+**功能描述**: 创建目录
+
+**参数说明**:
+- `client`: AFC客户端句柄
+- `path`: 要创建的目录路径
+
+**使用示例**:
+```cpp
+// 递归创建目录结构
+bool createDirectoryRecursively(afc_client_t afc, const QString& path) {
+    QStringList components = path.split('/', Qt::SkipEmptyParts);
+    QString currentPath;
+    
+    for (const QString& component : components) {
+        if (!currentPath.isEmpty()) {
+            currentPath += "/";
+        }
+        currentPath += component;
+        
+        // 检查目录是否存在
+        char **list = nullptr;
+        QString parentPath = currentPath.left(currentPath.lastIndexOf('/'));
+        if (!parentPath.isEmpty()) {
+            if (afc_read_directory(afc, parentPath.toUtf8().constData(), &list) == AFC_E_SUCCESS) {
+                bool exists = false;
+                for (int i = 0; list[i]; i++) {
+                    if (QString(list[i]) == component) {
+                        exists = true;
+                        break;
+                    }
+                }
+                afc_dictionary_free(list);
+                
+                if (!exists) {
+                    // 创建目录
+                    if (afc_make_directory(afc, currentPath.toUtf8().constData()) != AFC_E_SUCCESS) {
+                        return false;
+                    }
+                }
+            } else {
+                // 父目录不存在，尝试创建
+                return false;
+            }
+        } else {
+            // 根目录或一级目录
+            if (afc_make_directory(afc, currentPath.toUtf8().constData()) != AFC_E_SUCCESS) {
+                // 可能已存在，忽略错误
+            }
+        }
+    }
+    
+    return true;
+}
+```
+
+##### afc_remove_path()
+```c
+afc_error_t afc_remove_path(afc_client_t client,
+                           const char *path);
+```
+
+**功能描述**: 删除文件或目录（递归删除目录）
+
+**参数说明**:
+- `client`: AFC客户端句柄
+- `path`: 要删除的路径
+
+**使用示例**:
+```cpp
+// 安全删除文件或目录
+bool removePathSafely(afc_client_t afc, const QString& path) {
+    // 先检查是否为目录
+    char **info = nullptr;
+    bool isDirectory = false;
+    
+    if (afc_get_file_info(afc, path.toUtf8().constData(), &info) == AFC_E_SUCCESS) {
+        for (int i = 0; info[i]; i += 2) {
+            if (QString(info[i]) == "st_ifmt" && info[i+1]) {
+                isDirectory = (QString(info[i+1]) == "S_IFDIR");
+                break;
+            }
+        }
+        afc_dictionary_free(info);
+    }
+    
+    if (isDirectory) {
+        // 先清空目录
+        char **list = nullptr;
+        if (afc_read_directory(afc, path.toUtf8().constData(), &list) == AFC_E_SUCCESS) {
+            for (int i = 0; list[i]; i++) {
+                QString item = QString(list[i]);
+                if (item != "." && item != "..") {
+                    QString itemPath = path + "/" + item;
+                    if (!removePathSafely(afc, itemPath)) {
+                        afc_dictionary_free(list);
+                        return false;
+                    }
+                }
+            }
+            afc_dictionary_free(list);
+        }
+    }
+    
+    // 删除文件或空目录
+    return afc_remove_path(afc, path.toUtf8().constData()) == AFC_E_SUCCESS;
+}
+```
+
+##### afc_rename_path()
+```c
+afc_error_t afc_rename_path(afc_client_t client,
+                           const char *old_path,
+                           const char *new_path);
+```
+
+**功能描述**: 重命名文件或目录
+
+**参数说明**:
+- `client`: AFC客户端句柄
+- `old_path`: 原路径
+- `new_path`: 新路径
+
+#### 5.3 应用沙箱访问
+
+iOS应用使用沙箱机制，需要通过house_arrest服务访问应用专用目录。
+
+##### house_arrest_client_start_service()
+```c
+house_arrest_error_t house_arrest_client_start_service(idevice_t device,
+                                                      house_arrest_client_t *client,
+                                                      const char *label);
+```
+
+**功能描述**: 启动house_arrest服务（应用沙箱访问）
+
+##### house_arrest_send_request()
+```c
+house_arrest_error_t house_arrest_send_request(house_arrest_client_t client,
+                                              const char *bundle_id,
+                                              plist_t *dict);
+```
+
+**功能描述**: 请求访问应用沙箱
+
+**参数说明**:
+- `client`: house_arrest客户端句柄
+- `bundle_id`: 应用Bundle ID
+- `dict`: 输出参数，返回的响应信息
+
+**使用示例**:
+```cpp
+// 访问应用文档目录
+bool accessAppDocuments(const QString& udid, const QString& bundleId) {
+    idevice_t device = getDeviceConnection(udid);
+    if (!device) {
+        return false;
+    }
+    
+    // 启动house_arrest服务
+    house_arrest_client_t house_arrest = nullptr;
+    if (house_arrest_client_start_service(device, &house_arrest, "phone-linkc") != HOUSE_ARREST_E_SUCCESS) {
+        return false;
+    }
+    
+    // 请求访问应用沙箱
+    plist_t dict = nullptr;
+    if (house_arrest_send_request(house_arrest, bundleId.toUtf8().constData(), &dict) != HOUSE_ARREST_E_SUCCESS) {
+        house_arrest_client_free(house_arrest);
+        return false;
+    }
+    
+    // 检查是否成功
+    bool success = false;
+    if (dict) {
+        plist_t status = plist_dict_get_item(dict, "Status");
+        if (status) {
+            char *statusStr = nullptr;
+            plist_get_string_val(status, &statusStr);
+            success = (QString(statusStr) == "Complete");
+            free(statusStr);
+        }
+        plist_free(dict);
+    }
+    
+    if (success) {
+        // 现在可以通过AFC服务访问应用沙箱
+        afc_client_t afc = nullptr;
+        if (house_arrest_get_afc_client(house_arrest, &afc) == HOUSE_ARREST_E_SUCCESS) {
+            // 现在可以访问应用文档目录
+            char **list = nullptr;
+            if (afc_read_directory(afc, "Documents", &list) == AFC_E_SUCCESS) {
+                qDebug() << "应用文档目录内容:";
+                for (int i = 0; list[i]; i++) {
+                    qDebug() << "  " << list[i];
+                }
+                afc_dictionary_free(list);
+            }
+            
+            afc_client_free(afc);
+        }
+    }
+    
+    house_arrest_client_free(house_arrest);
+    return success;
+}
+
+// 更完整的应用文件管理器
+class AppFileManager {
+private:
+    QString currentUdid_;
+    QString currentBundleId_;
+    house_arrest_client_t house_arrest_;
+    afc_client_t afc_;
+    bool connected_;
+    
+public:
+    AppFileManager() : house_arrest_(nullptr), afc_(nullptr), connected_(false) {}
+    
+    ~AppFileManager() {
+        disconnect();
+    }
+    
+    bool connect(const QString& udid, const QString& bundleId) {
+        disconnect(); // 清理之前连接
+        
+        idevice_t device = getDeviceConnection(udid);
+        if (!device) {
+            return false;
+        }
+        
+        // 启动house_arrest服务
+        if (house_arrest_client_start_service(device, &house_arrest_, "phone-linkc") != HOUSE_ARREST_E_SUCCESS) {
+            return false;
+        }
+        
+        // 请求访问应用沙箱
+        plist_t dict = nullptr;
+        if (house_arrest_send_request(house_arrest_, bundleId.toUtf8().constData(), &dict) != HOUSE_ARREST_E_SUCCESS) {
+            house_arrest_client_free(house_arrest_);
+            house_arrest_ = nullptr;
+            return false;
+        }
+        
+        // 检查是否成功
+        bool success = false;
+        if (dict) {
+            plist_t status = plist_dict_get_item(dict, "Status");
+            if (status) {
+                char *statusStr = nullptr;
+                plist_get_string_val(status, &statusStr);
+                success = (QString(statusStr) == "Complete");
+                free(statusStr);
+            }
+            plist_free(dict);
+        }
+        
+        if (!success) {
+            house_arrest_client_free(house_arrest_);
+            house_arrest_ = nullptr;
+            return false;
+        }
+        
+        // 获取AFC客户端
+        if (house_arrest_get_afc_client(house_arrest_, &afc_) != HOUSE_ARREST_E_SUCCESS) {
+            house_arrest_client_free(house_arrest_);
+            house_arrest_ = nullptr;
+            return false;
+        }
+        
+        currentUdid_ = udid;
+        currentBundleId_ = bundleId;
+        connected_ = true;
+        
+        return true;
+    }
+    
+    void disconnect() {
+        if (afc_) {
+            afc_client_free(afc_);
+            afc_ = nullptr;
+        }
+        
+        if (house_arrest_) {
+            house_arrest_client_free(house_arrest_);
+            house_arrest_ = nullptr;
+        }
+        
+        connected_ = false;
+    }
+    
+    QStringList listDirectory(const QString& path) {
+        QStringList files;
+        
+        if (!connected_) {
+            return files;
+        }
+        
+        char **list = nullptr;
+        if (afc_read_directory(afc_, path.toUtf8().constData(), &list) == AFC_E_SUCCESS) {
+            for (int i = 0; list[i]; i++) {
+                QString filename = QString(list[i]);
+                if (filename != "." && filename != "..") {
+                    files << filename;
+                }
+            }
+            afc_dictionary_free(list);
+        }
+        
+        return files;
+    }
+    
+    bool uploadFile(const QString& localPath, const QString& remotePath) {
+        if (!connected_) {
+            return false;
+        }
+        
+        QFile localFile(localPath);
+        if (!localFile.open(QIODevice::ReadOnly)) {
+            return false;
+        }
+        
+        uint64_t handle = 0;
+        if (afc_file_open(afc_, remotePath.toUtf8().constData(), AFC_FOPEN_WRONLY, &handle) != AFC_E_SUCCESS) {
+            return false;
+        }
+        
+        const int BUFFER_SIZE = 65536;
+        char buffer[BUFFER_SIZE];
+        
+        while (!localFile.atEnd()) {
+            qint64 bytesRead = localFile.read(buffer, BUFFER_SIZE);
+            if (bytesRead <= 0) break;
+            
+            uint32_t bytesWritten = 0;
+            if (afc_file_write(afc_, handle, buffer, bytesRead, &bytesWritten) != AFC_E_SUCCESS ||
+                bytesWritten != static_cast<uint32_t>(bytesRead)) {
+                afc_file_close(afc_, handle);
+                return false;
+            }
+        }
+        
+        afc_file_close(afc_, handle);
+        return true;
+    }
+    
+    bool downloadFile(const QString& remotePath, const QString& localPath) {
+        if (!connected_) {
+            return false;
+        }
+        
+        QFile localFile(localPath);
+        if (!localFile.open(QIODevice::WriteOnly)) {
+            return false;
+        }
+        
+        uint64_t handle = 0;
+        if (afc_file_open(afc_, remotePath.toUtf8().constData(), AFC_FOPEN_RDONLY, &handle) != AFC_E_SUCCESS) {
+            return false;
+        }
+        
+        const int BUFFER_SIZE = 65536;
+        char buffer[BUFFER_SIZE];
+        
+        while (true) {
+            uint32_t bytesRead = 0;
+            if (afc_file_read(afc_, handle, buffer, BUFFER_SIZE, &bytesRead) != AFC_E_SUCCESS || bytesRead == 0) {
+                break;
+            }
+            
+            localFile.write(buffer, bytesRead);
+        }
+        
+        afc_file_close(afc_, handle);
+        return true;
+    }
+};
+```
+
 ### 6. 系统日志 API (syslog_relay)
 
 #### 6.1 日志监控
@@ -928,6 +1904,389 @@ if (error == SYSLOG_RELAY_E_SUCCESS) {
     }
     syslog_relay_client_free(syslog);
 }
+```
+
+#### 6.2 日志过滤与分析
+
+iOS系统日志包含大量信息，实际应用中需要过滤和分析。以下是一个完整的日志监控系统实现。
+
+**高级日志监控实现**:
+
+```cpp
+// 日志条目结构
+struct LogEntry {
+    QDateTime timestamp;    // 时间戳
+    QString level;          // 日志级别 (Error, Warning, Notice, Info, Debug)
+    QString process;        // 进程名称
+    QString processId;      // 进程ID
+    QString message;        // 日志消息
+    QString subsystem;      // 子系统
+    QString category;       // 类别
+    QString rawText;        // 原始日志文本
+    
+    bool isValid() const {
+        return !timestamp.isNull() && !level.isEmpty() && !process.isEmpty();
+    }
+};
+
+// 高级日志监控器
+class AdvancedLogMonitor : public QObject {
+    Q_OBJECT
+    
+private:
+    idevice_t device_;
+    QThread* logThread_;
+    bool monitoring_;
+    
+    // 过滤条件
+    QStringList levelFilters_;
+    QStringList processFilters_;
+    QStringList subsystemFilters_;
+    QStringList messageFilters_;
+    
+    // 统计数据
+    QMap<QString, int> levelCount_;
+    QMap<QString, int> processCount_;
+    QDateTime startTime_;
+    int totalLogCount_;
+    
+public:
+    AdvancedLogMonitor(QObject* parent = nullptr) 
+        : QObject(parent), device_(nullptr), logThread_(nullptr), monitoring_(false), totalLogCount_(0) {
+    }
+    
+    ~AdvancedLogMonitor() {
+        stopMonitoring();
+    }
+    
+    // 设置日志级别过滤器
+    void setLevelFilters(const QStringList& levels) {
+        levelFilters_ = levels;
+    }
+    
+    // 设置进程过滤器
+    void setProcessFilters(const QStringList& processes) {
+        processFilters_ = processes;
+    }
+    
+    // 设置消息过滤器（正则表达式）
+    void setMessageFilters(const QStringList& patterns) {
+        messageFilters_ = patterns;
+    }
+    
+    // 清除所有过滤器
+    void clearFilters() {
+        levelFilters_.clear();
+        processFilters_.clear();
+        subsystemFilters_.clear();
+        messageFilters_.clear();
+    }
+    
+    // 开始监控
+    bool startMonitoring(idevice_t device) {
+        if (monitoring_) {
+            return true;
+        }
+        
+        device_ = device;
+        if (!device_) {
+            emit errorOccurred("无效的设备句柄");
+            return false;
+        }
+        
+        // 重置统计数据
+        levelCount_.clear();
+        processCount_.clear();
+        startTime_ = QDateTime::currentDateTime();
+        totalLogCount_ = 0;
+        
+        // 创建工作线程
+        logThread_ = QThread::create([this]() {
+            runLogMonitoring();
+        });
+        
+        connect(logThread_, &QThread::finished, logThread_, &QThread::deleteLater);
+        logThread_->start();
+        
+        monitoring_ = true;
+        emit monitoringStarted();
+        return true;
+    }
+    
+    // 停止监控
+    void stopMonitoring() {
+        if (!monitoring_) {
+            return;
+        }
+        
+        monitoring_ = false;
+        
+        if (logThread_) {
+            logThread_->quit();
+            logThread_->wait(3000);
+            if (logThread_->isRunning()) {
+                logThread_->terminate();
+                logThread_->wait(1000);
+            }
+        }
+        
+        emit monitoringStopped();
+        emit statisticsReady(getStatistics());
+    }
+    
+    // 获取统计信息
+    QVariantMap getStatistics() const {
+        QVariantMap stats;
+        
+        stats["startTime"] = startTime_;
+        stats["totalLogCount"] = totalLogCount_;
+        stats["duration"] = startTime_.secsTo(QDateTime::currentDateTime());
+        stats["levelCounts"] = QVariantMap::fromMap(levelCount_);
+        stats["processCounts"] = QVariantMap::fromMap(processCount_);
+        
+        if (totalLogCount_ > 0) {
+            QMap<QString, int> levelPercents;
+            for (auto it = levelCount_.begin(); it != levelCount_.end(); ++it) {
+                levelPercents[it.key()] = it.value() * 100 / totalLogCount_;
+            }
+            stats["levelPercents"] = QVariantMap::fromMap(levelPercents);
+        }
+        
+        return stats;
+    }
+
+signals:
+    void logEntryReceived(const LogEntry& entry);
+    void monitoringStarted();
+    void monitoringStopped();
+    void errorOccurred(const QString& error);
+    void statisticsReady(const QVariantMap& stats);
+
+private:
+    void runLogMonitoring() {
+        syslog_relay_client_t syslog = nullptr;
+        if (syslog_relay_client_start_service(device_, &syslog, "phone-linkc") != SYSLOG_RELAY_E_SUCCESS) {
+            emit errorOccurred("无法启动系统日志服务");
+            return;
+        }
+        
+        while (monitoring_) {
+            char *data = nullptr;
+            uint32_t size = 0;
+            
+            // 带超时的接收，避免无限阻塞
+            syslog_relay_error_t error = syslog_relay_receive_with_timeout(syslog, &data, &size, 1000);
+            
+            if (error == SYSLOG_RELAY_E_SUCCESS && data && size > 0) {
+                QString logData = QString::fromUtf8(data, size);
+                free(data);
+                
+                // 解析日志条目
+                LogEntry entry = parseLogEntry(logData);
+                if (entry.isValid()) {
+                    // 应用过滤器
+                    if (shouldFilterEntry(entry)) {
+                        updateStatistics(entry);
+                        emit logEntryReceived(entry);
+                    }
+                }
+            } else if (error == SYSLOG_RELAY_E_MUX_ERROR) {
+                emit errorOccurred("系统日志服务连接中断");
+                break;
+            }
+        }
+        
+        syslog_relay_client_free(syslog);
+    }
+    
+    LogEntry parseLogEntry(const QString& rawLog) {
+        LogEntry entry;
+        entry.rawText = rawLog.trimmed();
+        
+        // iOS日志格式示例:
+        // 2023-11-15 14:30:45.123 MyAwesomeApp[1234:5678] Error: Something went wrong
+        // 或者:
+        // Nov 15 14:30:45 iPhone MyAwesomeApp[1234] <Error>: Something went wrong
+        
+        QRegularExpression regex(
+            R"((\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+)\s+(\w+)\[(\d+)\](:\d+)?\s+<(\w+)>:\s+(.+))");
+        
+        QRegularExpressionMatch match = regex.match(entry.rawText);
+        
+        if (match.hasMatch()) {
+            // 解析时间戳
+            entry.timestamp = QDateTime::fromString(match.captured(1), "yyyy-MM-dd hh:mm:ss.zzz");
+            
+            // 解析进程信息
+            entry.process = match.captured(2);
+            entry.processId = match.captured(3);
+            
+            // 解析级别和消息
+            entry.level = match.captured(5);
+            entry.message = match.captured(6);
+            
+            // 尝试从进程名称中提取子系统信息
+            if (entry.process.contains(".")) {
+                QStringList parts = entry.process.split(".");
+                if (parts.size() >= 2) {
+                    entry.subsystem = parts[0];
+                    entry.category = parts[1];
+                }
+            }
+        } else {
+            // 尝试另一种常见格式
+            QRegularExpression regex2(
+                R"((\w+\s+\d+\s+\d{2}:\d{2}:\d{2})\s+(\w+)\s+(\w+)\[(\d+)\]\s+<(\w+)>:\s+(.+))");
+            
+            match = regex2.match(entry.rawText);
+            if (match.hasMatch()) {
+                // 解析时间戳（需要加上当前年份）
+                QString timeStr = match.captured(1);
+                QDateTime dt = QDateTime::fromString(QString("%1 %2").arg(QDate::currentDate().year()).arg(timeStr), "yyyy MMM d hh:mm:ss");
+                entry.timestamp = dt;
+                
+                entry.process = match.captured(3);
+                entry.processId = match.captured(4);
+                entry.level = match.captured(5);
+                entry.message = match.captured(6);
+            }
+        }
+        
+        return entry;
+    }
+    
+    bool shouldFilterEntry(const LogEntry& entry) {
+        // 检查级别过滤器
+        if (!levelFilters_.isEmpty() && !levelFilters_.contains(entry.level, Qt::CaseInsensitive)) {
+            return false;
+        }
+        
+        // 检查进程过滤器
+        if (!processFilters_.isEmpty()) {
+            bool match = false;
+            for (const QString& filter : processFilters_) {
+                if (entry.process.contains(filter, Qt::CaseInsensitive)) {
+                    match = true;
+                    break;
+                }
+            }
+            if (!match) {
+                return false;
+            }
+        }
+        
+        // 检查消息过滤器
+        if (!messageFilters_.isEmpty()) {
+            bool match = false;
+            for (const QString& pattern : messageFilters_) {
+                QRegularExpression regex(pattern);
+                if (regex.isValid() && entry.message.contains(regex)) {
+                    match = true;
+                    break;
+                }
+            }
+            if (!match) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    void updateStatistics(const LogEntry& entry) {
+        totalLogCount_++;
+        
+        // 更新级别计数
+        levelCount_[entry.level]++;
+        
+        // 更新进程计数
+        processCount_[entry.process]++;
+    }
+};
+
+// 日志可视化分析器
+class LogVisualizer : public QObject {
+    Q_OBJECT
+    
+private:
+    QMap<QDateTime, int> timelineData_;      // 时间线数据
+    QMap<QString, int> levelTimeline_[24];   // 按小时的级别分布
+    QMap<QString, QMap<int, int>> levelByHour_; // 按小时的级别统计
+    
+public:
+    // 添加日志条目到可视化数据
+    void addLogEntry(const LogEntry& entry) {
+        // 更新时间线数据（按分钟聚合）
+        QDateTime minuteKey = entry.timestamp.addSecs(-entry.timestamp.time().second());
+        timelineData_[minuteKey]++;
+        
+        // 更新按小时的级别分布
+        int hour = entry.timestamp.time().hour();
+        levelTimeline_[hour][entry.level]++;
+        levelByHour_[entry.level][hour]++;
+    }
+    
+    // 获取时间线数据（用于图表显示）
+    QVariantMap getTimelineData() const {
+        QVariantMap result;
+        
+        // 转换为图表友好格式
+        QList<QVariant> timestamps;
+        QList<QVariant> counts;
+        
+        for (auto it = timelineData_.begin(); it != timelineData_.end(); ++it) {
+            timestamps.append(it.key().toMSecsSinceEpoch());
+            counts.append(it.value());
+        }
+        
+        result["timestamps"] = timestamps;
+        result["counts"] = counts;
+        
+        return result;
+    }
+    
+    // 获取按小时的级别分布（用于堆叠柱状图）
+    QVariantMap getHourlyLevelDistribution() const {
+        QVariantMap result;
+        
+        // 准备数据结构
+        QMap<QString, QList<QVariant>> levelData;
+        QStringList levels = {"Error", "Warning", "Notice", "Info", "Debug"};
+        
+        // 初始化每个级别的24小时数据
+        for (const QString& level : levels) {
+            levelData[level] = QList<QVariant>(24, 0);
+        }
+        
+        // 填充实际数据
+        for (int hour = 0; hour < 24; hour++) {
+            for (auto it = levelTimeline_[hour].begin(); it != levelTimeline_[hour].end(); ++it) {
+                QString level = it.key();
+                int count = it.value();
+                
+                if (levelData.contains(level)) {
+                    levelData[level][hour] = count;
+                }
+            }
+        }
+        
+        // 转换为输出格式
+        for (auto it = levelData.begin(); it != levelData.end(); ++it) {
+            result[it.key()] = it.value();
+        }
+        
+        return result;
+    }
+    
+    // 清除所有数据
+    void clear() {
+        timelineData_.clear();
+        for (int i = 0; i < 24; i++) {
+            levelTimeline_[i].clear();
+        }
+        levelByHour_.clear();
+    }
+};
 ```
 
 ## 属性列表 (plist) API
@@ -999,6 +2358,143 @@ if (value) {
 plist_free(options);
 ```
 
+### 高级plist操作
+
+#### 复杂数据结构处理
+
+```cpp
+// 创建复杂配置选项
+plist_t createAdvancedAppInstallOptions() {
+    // 主配置字典
+    plist_t options = plist_new_dict();
+    
+    // 设置应用类型
+    plist_dict_set_item(options, "ApplicationType", plist_new_string("User"));
+    
+    // 创建权限数组
+    plist_t permissions = plist_new_array();
+    plist_array_append_item(permissions, plist_new_string("photos"));
+    plist_array_append_item(permissions, plist_new_string("camera"));
+    plist_dict_set_item(options, "RequestedPermissions", permissions);
+    
+    // 设置元数据
+    plist_t metadata = plist_new_dict();
+    plist_dict_set_item(metadata, "BundleID", plist_new_string("com.example.app"));
+    plist_dict_set_item(metadata, "Version", plist_new_string("1.0.0"));
+    plist_dict_set_item(metadata, "ShortVersion", plist_new_string("1.0"));
+    plist_dict_set_item(options, "Metadata", metadata);
+    
+    // 添加标志
+    plist_t flags = plist_new_uint(1);  // ITUNES_FLAGS_INSTALL
+    plist_dict_set_item(options, "iTunesFlags", flags);
+    
+    return options;
+}
+```
+
+#### plist序列化和反序列化
+
+```cpp
+// 将plist保存到文件
+bool savePlistToFile(plist_t plist, const QString& filePath) {
+    if (!plist) {
+        return false;
+    }
+    
+    char *buffer = NULL;
+    uint32_t length = 0;
+    
+    // 转换为XML格式的二进制数据
+    plist_to_xml(plist, &buffer, &length, 0);
+    
+    if (!buffer) {
+        return false;
+    }
+    
+    QFile file(filePath);
+    bool success = false;
+    if (file.open(QIODevice::WriteOnly)) {
+        success = (file.write(buffer, length) == length);
+        file.close();
+    }
+    
+    free(buffer);
+    return success;
+}
+
+// 从文件加载plist
+plist_t loadPlistFromFile(const QString& filePath) {
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return NULL;
+    }
+    
+    QByteArray data = file.readAll();
+    file.close();
+    
+    plist_t plist = NULL;
+    plist_from_xml(data.constData(), data.length(), &plist);
+    
+    return plist;
+}
+```
+
+#### phone-linkc项目中的实用函数
+
+```cpp
+// 辅助函数：从锁中获取字符串值
+QString getLockdowndStringValue(lockdownd_client_t client, const char* domain, const char* key) {
+    plist_t value = NULL;
+    QString result;
+    
+    if (lockdownd_get_value(client, domain, key, &value) == LOCKDOWN_E_SUCCESS && value) {
+        if (plist_get_node_type(value) == PLIST_STRING) {
+            char *str_value = NULL;
+            plist_get_string_val(value, &str_value);
+            if (str_value) {
+                result = QString::fromUtf8(str_value);
+                free(str_value);
+            }
+        }
+        plist_free(value);
+    }
+    
+    return result;
+}
+
+// 辅助函数：从锁中获取整数值
+uint64_t getLockdowndUIntValue(lockdownd_client_t client, const char* domain, const char* key) {
+    plist_t value = NULL;
+    uint64_t result = 0;
+    
+    if (lockdownd_get_value(client, domain, key, &value) == LOCKDOWN_E_SUCCESS && value) {
+        if (plist_get_node_type(value) == PLIST_UINT) {
+            plist_get_uint_val(value, &result);
+        }
+        plist_free(value);
+    }
+    
+    return result;
+}
+
+// 辅助函数：从锁中获取日期值
+QDateTime getLockdowndDateValue(lockdownd_client_t client, const char* domain, const char* key) {
+    plist_t value = NULL;
+    QDateTime result;
+    
+    if (lockdownd_get_value(client, domain, key, &value) == LOCKDOWN_E_SUCCESS && value) {
+        if (plist_get_node_type(value) == PLIST_DATE) {
+            int32_t secs = 0, usecs = 0;
+            plist_get_date_val(value, &secs, &usecs);
+            result = QDateTime::fromSecsSinceEpoch(secs);
+        }
+        plist_free(value);
+    }
+    
+    return result;
+}
+```
+
 ## 错误处理
 
 ### 错误代码定义
@@ -1050,6 +2546,425 @@ if (error != IDEVICE_E_SUCCESS) {
     qWarning() << "设备连接失败:" << getErrorMessage(error);
     return false;
 }
+```
+
+### 故障排除指南
+
+#### 常见连接问题
+
+**问题1: 设备连接失败 - IDEVICE_E_SSL_ERROR**
+
+```cpp
+// 解决方案：重置信任关系并重新尝试连接
+bool resetAndReconnect(const QString& udid) {
+    // 1. 释放现有连接
+    idevice_free(device);
+    device = nullptr;
+    
+    // 2. 重启usbmuxd服务（需要管理员权限）
+    #ifdef Q_OS_WIN
+    QProcess::execute("net stop usbmuxd");
+    QProcess::execute("net start usbmuxd");
+    #endif
+    
+    // 3. 检查设备是否已解锁并信任此电脑
+    if (!QMessageBox::question(nullptr, "设备连接问题", 
+                              "请检查设备是否已解锁并信任此电脑，然后重试")) {
+        return false;
+    }
+    
+    // 4. 尝试重新连接
+    return idevice_new(&device, udid.toUtf8().constData()) == IDEVICE_E_SUCCESS;
+}
+```
+
+**问题2: lockdownd服务连接失败**
+
+```cpp
+// 解决方案：尝试不同的客户端创建方法
+bool tryAlternativeLockdowndConnection(idevice_t device) {
+    lockdownd_client_t client = nullptr;
+    
+    // 方法1：使用握手方式创建客户端
+    if (lockdownd_client_new_with_handshake(device, &client, "phone-linkc") == LOCKDOWN_E_SUCCESS) {
+        return client;
+    }
+    
+    // 方法2：尝试不使用握手方式
+    if (lockdownd_client_new(device, &client, "phone-linkc") == LOCKDOWN_E_SUCCESS) {
+        // 手动启动会话
+        uint16_t port = 0;
+        if (lockdownd_start_session(client, NULL, NULL, &port) == LOCKDOWN_E_SUCCESS) {
+            return client;
+        }
+    }
+    
+    return nullptr;
+}
+```
+
+**问题3: 服务启动失败**
+
+```cpp
+// 解决方案：检查服务可用性并诊断原因
+QString diagnoseServiceFailure(idevice_t device, const QString& serviceName) {
+    lockdownd_client_t lockdown = nullptr;
+    
+    // 1. 检查基本连接
+    if (lockdownd_client_new_with_handshake(device, &lockdown, "phone-linkc") != LOCKDOWN_E_SUCCESS) {
+        return "无法建立lockdownd连接，可能设备未信任此电脑";
+    }
+    
+    // 2. 检查设备iOS版本
+    QString iosVersion = getLockdowndStringValue(lockdown, nullptr, "ProductVersion");
+    if (!iosVersion.isEmpty()) {
+        qDebug() << "设备iOS版本:" << iosVersion;
+        
+        // 特定服务的iOS版本要求
+        if (serviceName == "com.apple.mobile.screenshotr" && 
+            (iosVersion.startsWith("3.") || iosVersion.startsWith("4.0"))) {
+            return "截图服务需要iOS 4.1或更高版本";
+        }
+    }
+    
+    // 3. 尝试启动服务并分析错误
+    lockdownd_service_descriptor_t service = nullptr;
+    lockdownd_error_t error = lockdownd_start_service(lockdown, 
+                                                     serviceName.toUtf8().constData(), 
+                                                     &service);
+    
+    if (service) {
+        lockdownd_service_descriptor_free(service);
+        return "服务已正常启动，可能是服务客户端初始化问题";
+    }
+    
+    // 4. 根据错误代码分析
+    switch (error) {
+        case LOCKDOWN_E_INVALID_SERVICE:
+            return QString("无效的服务名称: %1").arg(serviceName);
+        case LOCKDOWN_E_START_SERVICE_FAILED:
+            return QString("服务启动失败，可能设备不支持此服务或处于不允许的状态");
+        case LOCKDOWN_E_MUX_ERROR:
+            return "多路复用连接错误，可能usbmuxd服务异常";
+        default:
+            return QString("未知错误代码: %1").arg(error);
+    }
+    
+    lockdownd_client_free(lockdown);
+    return "诊断完成，但未发现明确问题";
+}
+```
+
+#### 常见性能问题
+
+**问题1: 文件传输速度慢**
+
+```cpp
+// 解决方案：优化文件传输缓冲区和并发策略
+class OptimizedFileTransfer {
+private:
+    static const int OPTIMAL_BUFFER_SIZE = 65536;  // 64KB缓冲区
+    static const int MAX_CONCURRENT_OPERATIONS = 4;  // 最大并发操作数
+    
+public:
+    // 优化的文件上传实现
+    static bool optimizedFileUpload(afc_client_t afc, 
+                                  const QString& localPath, 
+                                  const QString& remotePath) {
+        QFile localFile(localPath);
+        if (!localFile.open(QIODevice::ReadOnly)) {
+            return false;
+        }
+        
+        uint64_t handle = 0;
+        QByteArray remotePathBytes = remotePath.toUtf8();
+        
+        if (afc_file_open(afc, remotePathBytes.constData(), 
+                          AFC_FOPEN_WRONLY, &handle) != AFC_E_SUCCESS) {
+            return false;
+        }
+        
+        // 使用较大的缓冲区
+        char buffer[OPTIMAL_BUFFER_SIZE];
+        qint64 totalSize = localFile.size();
+        qint64 transferred = 0;
+        
+        while (!localFile.atEnd()) {
+            qint64 bytesRead = localFile.read(buffer, OPTIMAL_BUFFER_SIZE);
+            if (bytesRead <= 0) break;
+            
+            uint32_t bytesWritten = 0;
+            if (afc_file_write(afc, handle, buffer, bytesRead, &bytesWritten) != AFC_E_SUCCESS ||
+                bytesWritten != static_cast<uint32_t>(bytesRead)) {
+                afc_file_close(afc, handle);
+                return false;
+            }
+            
+            transferred += bytesWritten;
+            
+            // 发送进度更新（避免频繁更新UI）
+            if (transferred % (1024 * 1024) == 0) {  // 每MB更新一次
+                emit uploadProgress(transferred, totalSize);
+            }
+        }
+        
+        afc_file_close(afc, handle);
+        return true;
+    }
+};
+```
+
+**问题2: 设备扫描慢或扫描不到设备**
+
+```cpp
+// 解决方案：使用事件驱动模式替代轮询
+class DeviceScanner {
+private:
+    idevice_subscription_context_t eventContext;
+    bool scanningEnabled;
+    
+public:
+    // 启用事件驱动的设备监听
+    bool startEventDrivenScanning() {
+        if (idevice_event_subscribe(deviceEventCallback, this) != IDEVICE_E_SUCCESS) {
+            return false;
+        }
+        
+        eventContext = reinterpret_cast<idevice_subscription_context_t>(1);
+        scanningEnabled = true;
+        
+        // 初始扫描一次
+        performInitialScan();
+        
+        return true;
+    }
+    
+    // 设备事件回调
+    static void deviceEventCallback(const idevice_event_t* event, void* user_data) {
+        DeviceScanner* scanner = static_cast<DeviceScanner*>(user_data);
+        scanner->handleDeviceEvent(event);
+    }
+    
+    // 处理设备事件
+    void handleDeviceEvent(const idevice_event_t* event) {
+        if (!scanningEnabled) return;
+        
+        QString udid = QString::fromUtf8(event->udid);
+        
+        switch (event->event) {
+            case IDEVICE_DEVICE_ADD:
+                emit deviceConnected(udid);
+                break;
+                
+            case IDEVICE_DEVICE_REMOVE:
+                emit deviceDisconnected(udid);
+                break;
+                
+            case IDEVICE_DEVICE_PAIRED:
+                emit devicePaired(udid);
+                break;
+        }
+    }
+    
+    // 停止事件驱动扫描
+    void stopEventDrivenScanning() {
+        if (eventContext) {
+            idevice_event_unsubscribe();
+            eventContext = nullptr;
+            scanningEnabled = false;
+        }
+    }
+};
+```
+
+#### 平台特定问题
+
+**Windows平台问题**
+
+```cpp
+// Windows特定解决方案
+class WindowsSpecificSolutions {
+public:
+    // 检查iTunes和Apple Mobile Device Support
+    static bool checkAppleComponents() {
+        // 检查注册表项
+        QSettings appleReg("HKEY_LOCAL_MACHINE\\SOFTWARE\\Apple Inc.", 
+                          QSettings::NativeFormat);
+        
+        QStringList requiredComponents = {"Apple Mobile Device Support", "iTunes"};
+        for (const QString& component : requiredComponents) {
+            appleReg.beginGroup(component);
+            if (!appleReg.contains("InstallDir")) {
+                qWarning() << "Apple组件未安装或损坏:" << component;
+                return false;
+            }
+            appleReg.endGroup();
+        }
+        
+        return true;
+    }
+    
+    // 修复驱动问题
+    static bool repairDrivers() {
+        // 尝试重启Apple Mobile Device服务
+        QProcess process;
+        process.start("net", QStringList() << "stop" << "Apple Mobile Device Service");
+        process.waitForFinished(5000);
+        
+        process.start("net", QStringList() << "start" << "Apple Mobile Device Service");
+        process.waitForFinished(5000);
+        
+        return process.exitCode() == 0;
+    }
+    
+    // 检查usbmuxd服务状态
+    static bool checkUsbmuxdService() {
+        QProcess process;
+        process.start("sc", QStringList() << "query" << "usbmuxd");
+        process.waitForFinished();
+        
+        QString output = process.readAllStandardOutput();
+        if (output.contains("RUNNING")) {
+            return true;
+        }
+        
+        // 尝试启动服务
+        process.start("net", QStringList() << "start" << "usbmuxd");
+        process.waitForFinished();
+        
+        return process.exitCode() == 0;
+    }
+};
+```
+
+**macOS平台问题**
+
+```cpp
+// macOS特定解决方案
+class MacOSSpecificSolutions {
+public:
+    // 检查homebrew安装的libimobiledevice
+    static bool checkHomebrewInstallation() {
+        QProcess process;
+        process.start("brew", QStringList() << "list" << "libimobiledevice");
+        process.waitForFinished();
+        
+        return process.exitCode() == 0;
+    }
+    
+    // 检查Xcode命令行工具
+    static bool checkXcodeTools() {
+        QProcess process;
+        process.start("xcode-select", QStringList() << "-p");
+        process.waitForFinished();
+        
+        return process.exitCode() == 0;
+    }
+    
+    // 修复权限问题
+    static bool fixPermissions() {
+        // 修复usbmuxd权限
+        QProcess::execute("sudo", QStringList() << "chown" << "root:wheel" << "/var/db/lockdown");
+        QProcess::execute("sudo", QStringList() << "chmod" << "755" << "/var/db/lockdown");
+        
+        return true;
+    }
+};
+```
+
+#### 调试和日志收集
+
+```cpp
+// 调试辅助工具
+class LibimobiledeviceDebugger {
+public:
+    // 收集环境信息
+    static QString collectEnvironmentInfo() {
+        QString info;
+        
+        // 1. 系统信息
+        info += "=== 系统信息 ===
+";
+        info += QString("操作系统: %1
+").arg(QSysInfo::prettyProductName());
+        info += QString("内核版本: %1
+").arg(QSysInfo::kernelVersion());
+        info += QString("架构: %1
+").arg(QSysInfo::currentCpuArchitecture());
+        
+        // 2. libimobiledevice版本
+        info += "
+=== libimobiledevice信息 ===
+";
+        info += "版本: " + getLibimobiledeviceVersion() + "
+";
+        
+        // 3. 设备列表
+        info += "
+=== 已连接设备 ===
+";
+        info += getConnectedDevicesInfo();
+        
+        // 4. 服务状态
+        info += "
+=== 服务状态 ===
+";
+        info += getServiceStatus();
+        
+        return info;
+    }
+    
+    // 启用详细日志
+    static void enableVerboseLogging(bool enable = true) {
+        #ifdef HAVE_LIBIMOBILEDEVICE
+        // 设置libimobiledevice日志级别
+        idevice_set_debug_level(enable ? 2 : 1);
+        
+        // 在macOS上启用系统日志
+        #ifdef Q_OS_MAC
+        if (enable) {
+            QProcess::execute("log", QStringList() << "stream" << "--predicate" << "process == 'usbmuxd'");
+        }
+        #endif
+        #endif
+    }
+    
+    // 测试基本功能
+    static bool testBasicFunctionality() {
+        #ifdef HAVE_LIBIMOBILEDEVICE
+        // 测试获取设备列表
+        char **device_list = nullptr;
+        int count = 0;
+        
+        if (idevice_get_device_list(&device_list, &count) != IDEVICE_E_SUCCESS) {
+            qDebug() << "测试失败: 无法获取设备列表";
+            return false;
+        }
+        
+        qDebug() << QString("测试成功: 找到 %1 个设备").arg(count);
+        
+        idevice_device_list_free(device_list);
+        return true;
+        #else
+        qDebug() << "测试失败: libimobiledevice未编译进项目";
+        return false;
+        #endif
+    }
+    
+    // 生成诊断报告
+    static void generateDiagnosticReport(const QString& filePath) {
+        QString report = collectEnvironmentInfo();
+        
+        QFile file(filePath);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream out(&file);
+            out << report;
+            file.close();
+            
+            qDebug() << "诊断报告已生成:" << filePath;
+        }
+    }
+};
 ```
 
 ## 线程安全注意事项
@@ -1168,6 +3083,116 @@ AutoLockdown lockdown(lockdown_ptr);
 // 作用域结束时自动释放资源
 ```
 
+### 4. 批量操作
+```cpp
+// 批量应用操作优化器
+class BatchAppOperations {
+private:
+    struct BatchOperation {
+        enum Type { Install, Uninstall, Update };
+        Type type;
+        QString bundleId;
+        QString filePath;  // 用于安装/更新
+        QString version;   // 用于更新
+    };
+    
+    QList<BatchOperation> operations_;
+    QMap<QString, bool> results_;
+    
+public:
+    // 添加批量操作
+    void addInstall(const QString& filePath) {
+        BatchOperation op;
+        op.type = BatchOperation::Install;
+        op.filePath = filePath;
+        operations_ << op;
+    }
+    
+    void addUninstall(const QString& bundleId) {
+        BatchOperation op;
+        op.type = BatchOperation::Uninstall;
+        op.bundleId = bundleId;
+        operations_ << op;
+    }
+    
+    // 执行批量操作
+    QMap<QString, bool> executeBatch(idevice_t device) {
+        if (!device) {
+            qWarning() << "无效的设备句柄";
+            return results_;
+        }
+        
+        instproxy_client_t instproxy = nullptr;
+        if (instproxy_client_start_service(device, &instproxy, "phone-linkc") != INSTPROXY_E_SUCCESS) {
+            qWarning() << "无法启动应用代理服务";
+            return results_;
+        }
+        
+        AutoInstProxy autoProxy(instproxy);
+        
+        // 为安装操作创建选项
+        plist_t installOptions = createBatchInstallOptions();
+        
+        for (int i = 0; i < operations_.size(); i++) {
+            const BatchOperation& op = operations_[i];
+            
+            switch (op.type) {
+                case BatchOperation::Install:
+                    results_[op.filePath] = performInstall(instproxy, op.filePath, installOptions);
+                    break;
+                    
+                case BatchOperation::Uninstall:
+                    results_[op.bundleId] = performUninstall(instproxy, op.bundleId);
+                    break;
+            }
+            
+            // 发送进度更新
+            emit batchProgress(i + 1, operations_.size(), 
+                               QString("已完成 %1/%2 个操作")
+                               .arg(i + 1)
+                               .arg(operations_.size()));
+        }
+        
+        plist_free(installOptions);
+        return results_;
+    }
+    
+signals:
+    void batchProgress(int current, int total, const QString& message);
+    
+private:
+    // RAII类，自动释放instproxy_client
+    class AutoInstProxy {
+        instproxy_client_t client_;
+    public:
+        AutoInstProxy(instproxy_client_t client) : client_(client) {}
+        ~AutoInstProxy() { if (client_) instproxy_client_free(client_); }
+        instproxy_client_t get() { return client_; }
+    };
+    
+    // 创建批量安装选项，减少重复设置
+    plist_t createBatchInstallOptions() {
+        plist_t options = plist_new_dict();
+        plist_dict_set_item(options, "ApplicationType", plist_new_string("User"));
+        plist_dict_set_item(options, "SkipUninstall", plist_new_bool(true));
+        plist_dict_set_item(options, "iTunesMetadata", plist_new_bool(false));
+        return options;
+    }
+    
+    // 执行安装操作
+    bool performInstall(instproxy_client_t client, const QString& filePath, plist_t options) {
+        // 实现细节省略
+        return true;
+    }
+    
+    // 执行卸载操作
+    bool performUninstall(instproxy_client_t client, const QString& bundleId) {
+        // 实现细节省略
+        return true;
+    }
+};
+```
+
 ## 高级API模块
 
 ### 7. 移动备份 API (mobilebackup2)
@@ -1199,6 +3224,216 @@ mobilebackup2_error_t mobilebackup2_send_request(mobilebackup2_client_t client,
 - `"Restore"`: 恢复备份
 - `"Info"`: 获取备份信息
 - `"List"`: 列出可用备份
+
+#### 7.2 备份操作示例
+
+```cpp
+// 备份管理器实现
+class BackupManager {
+private:
+    DeviceManager* deviceManager_;
+    QString backupDirectory_;
+    
+public:
+    BackupManager(DeviceManager* deviceManager, QObject* parent = nullptr)
+        : QObject(parent), deviceManager_(deviceManager) {
+        
+        // 设置默认备份目录
+        backupDirectory_ = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/backups";
+        QDir().mkpath(backupDirectory_);
+    }
+    
+    // 创建设备备份
+    bool createBackup(const QString& udid, const QString& backupName = QString()) {
+        idevice_t device = deviceManager_->getDeviceConnection(udid);
+        if (!device) {
+            return false;
+        }
+        
+        mobilebackup2_client_t mb2 = nullptr;
+        if (mobilebackup2_client_start_service(device, &mb2, "phone-linkc") != MOBILEBACKUP2_E_SUCCESS) {
+            deviceManager_->releaseDeviceConnection(udid);
+            return false;
+        }
+        
+        // 生成备份名称（如果未提供）
+        QString finalBackupName = backupName;
+        if (finalBackupName.isEmpty()) {
+            finalBackupName = QString("%1_%2")
+                .arg(udid.left(8)) // 使用UDID前8位
+                .arg(QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss"));
+        }
+        
+        // 创建备份目录
+        QString backupPath = backupDirectory_ + "/" + finalBackupName;
+        QDir().mkpath(backupPath);
+        
+        // 设置备份选项
+        plist_t options = plist_new_dict();
+        plist_dict_set_item(options, "ForceFullBackup", plist_new_bool(true));
+        plist_dict_set_item(options, "BackupSystemFiles", plist_new_bool(true));
+        
+        // 发送备份请求
+        if (mobilebackup2_send_request(mb2, "Backup", 
+                                     udid.toUtf8().constData(),
+                                     nullptr, 
+                                     options) != MOBILEBACKUP2_E_SUCCESS) {
+            plist_free(options);
+            mobilebackup2_client_free(mb2);
+            deviceManager_->releaseDeviceConnection(udid);
+            return false;
+        }
+        
+        // 处理备份响应
+        plist_t response = nullptr;
+        if (mobilebackup2_receive_message(mb2, &response) != MOBILEBACKUP2_E_SUCCESS) {
+            plist_free(options);
+            mobilebackup2_client_free(mb2);
+            deviceManager_->releaseDeviceConnection(udid);
+            return false;
+        }
+        
+        // 验证响应
+        bool success = false;
+        if (response) {
+            plist_t status = plist_dict_get_item(response, "Status");
+            if (status) {
+                char *statusStr = nullptr;
+                plist_get_string_val(status, &statusStr);
+                success = (QString(statusStr) == "Success");
+                free(statusStr);
+            }
+            plist_free(response);
+        }
+        
+        plist_free(options);
+        mobilebackup2_client_free(mb2);
+        deviceManager_->releaseDeviceConnection(udid);
+        
+        if (success) {
+            emit backupCompleted(backupPath);
+            qDebug() << "备份成功完成:" << backupPath;
+        } else {
+            emit backupFailed("备份过程中发生错误");
+        }
+        
+        return success;
+    }
+    
+    // 列出所有备份
+    QStringList listBackups(const QString& udid = QString()) {
+        QStringList backups;
+        QDir backupDir(backupDirectory_);
+        
+        QStringList entries = backupDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+        
+        for (const QString& entry : entries) {
+            // 如果指定了UDID，只匹配该设备的备份
+            if (!udid.isEmpty() && !entry.startsWith(udid.left(8))) {
+                continue;
+            }
+            
+            backups.append(entry);
+        }
+        
+        return backups;
+    }
+    
+    // 恢复备份
+    bool restoreBackup(const QString& udid, const QString& backupName, bool eraseDevice = false) {
+        idevice_t device = deviceManager_->getDeviceConnection(udid);
+        if (!device) {
+            return false;
+        }
+        
+        mobilebackup2_client_t mb2 = nullptr;
+        if (mobilebackup2_client_start_service(device, &mb2, "phone-linkc") != MOBILEBACKUP2_E_SUCCESS) {
+            deviceManager_->releaseDeviceConnection(udid);
+            return false;
+        }
+        
+        // 检查备份是否存在
+        QString backupPath = backupDirectory_ + "/" + backupName;
+        QDir backupDir(backupPath);
+        if (!backupDir.exists()) {
+            emit restoreFailed("备份不存在: " + backupName);
+            mobilebackup2_client_free(mb2);
+            deviceManager_->releaseDeviceConnection(udid);
+            return false;
+        }
+        
+        // 设置恢复选项
+        plist_t options = plist_new_dict();
+        plist_dict_set_item(options, "RestoreSystemFiles", plist_new_bool(true));
+        plist_dict_set_item(options, "CopyUserSettings", plist_new_bool(true));
+        plist_dict_set_item(options, "EraseBeforeRestore", plist_new_bool(eraseDevice));
+        
+        // 发送恢复请求
+        if (mobilebackup2_send_request(mb2, "Restore",
+                                     udid.toUtf8().constData(),
+                                     backupPath.toUtf8().constData(),
+                                     options) != MOBILEBACKUP2_E_SUCCESS) {
+            plist_free(options);
+            mobilebackup2_client_free(mb2);
+            deviceManager_->releaseDeviceConnection(udid);
+            return false;
+        }
+        
+        // 处理恢复响应
+        plist_t response = nullptr;
+        if (mobilebackup2_receive_message(mb2, &response) != MOBILEBACKUP2_E_SUCCESS) {
+            plist_free(options);
+            mobilebackup2_client_free(mb2);
+            deviceManager_->releaseDeviceConnection(udid);
+            return false;
+        }
+        
+        // 验证响应
+        bool success = false;
+        if (response) {
+            plist_t status = plist_dict_get_item(response, "Status");
+            if (status) {
+                char *statusStr = nullptr;
+                plist_get_string_val(status, &statusStr);
+                success = (QString(statusStr) == "Success");
+                free(statusStr);
+            }
+            plist_free(response);
+        }
+        
+        plist_free(options);
+        mobilebackup2_client_free(mb2);
+        deviceManager_->releaseDeviceConnection(udid);
+        
+        if (success) {
+            emit restoreCompleted(backupName);
+            qDebug() << "恢复成功完成:" << backupName;
+        } else {
+            emit restoreFailed("恢复过程中发生错误");
+        }
+        
+        return success;
+    }
+    
+    // 删除备份
+    bool deleteBackup(const QString& backupName) {
+        QString backupPath = backupDirectory_ + "/" + backupName;
+        QDir backupDir(backupPath);
+        
+        if (!backupDir.exists()) {
+            return false;
+        }
+        
+        return backupDir.removeRecursively();
+    }
+    
+signals:
+    void backupCompleted(const QString& backupPath);
+    void backupFailed(const QString& errorMessage);
+    void restoreCompleted(const QString& backupName);
+    void restoreFailed(const QString& errorMessage);
+    void restoreProgress(int percentage);
+};
 
 ### 8. 春天板服务 API (springboard)
 
@@ -1347,6 +3582,405 @@ if (error == NP_E_SUCCESS) {
     
     np_client_free(np);
 }
+```
+
+##### np_set_notify_callback()
+```c
+np_error_t np_set_notify_callback(np_client_t client,
+                                np_notify_cb_t notify_cb,
+                                void *user_data);
+```
+
+**功能描述**: 设置通知回调函数（替代轮询方式）
+
+**参数说明**:
+- `client`: 通知代理客户端句柄
+- `notify_cb`: 通知回调函数
+- `user_data`: 用户数据
+
+#### 8.2 通知事件处理
+
+以下是完整的通知事件处理系统实现，可用于实时监控设备状态变化。
+
+**高级通知处理器**:
+
+```cpp
+// 设备通知管理器
+class DeviceNotificationManager : public QObject {
+    Q_OBJECT
+    
+private:
+    QMap<QString, np_client_t> notificationClients_;  // 按设备UDID索引的客户端
+    QSet<QString> subscribedNotifications_;          // 已订阅的通知列表
+    QMutex clientMutex_;                             // 线程安全锁
+    
+public:
+    DeviceNotificationManager(QObject* parent = nullptr) : QObject(parent) {
+    }
+    
+    ~DeviceNotificationManager() {
+        // 清理所有通知客户端
+        QMutexLocker locker(&clientMutex_);
+        for (auto it = notificationClients_.begin(); it != notificationClients_.end(); ++it) {
+            np_client_free(it.value());
+        }
+        notificationClients_.clear();
+    }
+    
+    // 为设备启用通知监听
+    bool enableNotifications(const QString& udid, idevice_t device) {
+        QMutexLocker locker(&clientMutex_);
+        
+        // 检查是否已存在客户端
+        if (notificationClients_.contains(udid)) {
+            return true;
+        }
+        
+        // 创建通知客户端
+        np_client_t np = nullptr;
+        np_error_t error = np_client_start_service(device, &np, "phone-linkc");
+        if (error != NP_E_SUCCESS) {
+            qWarning() << "无法启动通知代理服务:" << error;
+            return false;
+        }
+        
+        // 设置通知回调
+        if (np_set_notify_callback(np, notificationCallback, this) != NP_E_SUCCESS) {
+            np_client_free(np);
+            return false;
+        }
+        
+        // 订阅关键通知
+        const char* notifications[] = {
+            NP_SYNC_WILL_START,
+            NP_SYNC_DID_START,
+            NP_SYNC_DID_FINISH,
+            NP_BACKUP_DOMAIN_CHANGED,
+            NP_APP_INSTALLED,
+            NP_APP_UNINSTALLED,
+            NP_PHONE_NUMBER_CHANGED,
+            NP_DEVICE_NAME_CHANGED,
+            NP_TIMEZONE_CHANGED,
+            NP_TRUSTED_HOST_CHANGED,
+            NULL
+        };
+        
+        for (int i = 0; notifications[i]; i++) {
+            if (np_observe_notification(np, notifications[i]) == NP_E_SUCCESS) {
+                subscribedNotifications_.insert(notifications[i]);
+            }
+        }
+        
+        notificationClients_[udid] = np;
+        
+        qDebug() << "已为设备" << udid << "启用通知监听";
+        return true;
+    }
+    
+    // 禁用设备通知
+    bool disableNotifications(const QString& udid) {
+        QMutexLocker locker(&clientMutex_);
+        
+        if (!notificationClients_.contains(udid)) {
+            return false;
+        }
+        
+        np_client_free(notificationClients_[udid]);
+        notificationClients_.remove(udid);
+        
+        qDebug() << "已为设备" << udid << "禁用通知监听";
+        return true;
+    }
+    
+    // 获取已订阅的通知列表
+    QStringList getSubscribedNotifications() const {
+        return QStringList(subscribedNotifications_.begin(), subscribedNotifications_.end());
+    }
+
+signals:
+    void syncStarted(const QString& udid);
+    void syncFinished(const QString& udid);
+    void appInstalled(const QString& udid, const QString& bundleId);
+    void appUninstalled(const QString& udid, const QString& bundleId);
+    void deviceNameChanged(const QString& udid, const QString& oldName, const QString& newName);
+    void phoneNumberChanged(const QString& udid, const QString& phoneNumber);
+    void backupDomainChanged(const QString& udid);
+    void timezoneChanged(const QString& udid, const QString& timezone);
+    void trustedHostChanged(const QString& udid, const QString& host);
+
+private:
+    // 静态通知回调函数
+    static void notificationCallback(const char* notification, void* user_data) {
+        DeviceNotificationManager* manager = static_cast<DeviceNotificationManager*>(user_data);
+        if (manager) {
+            manager->handleNotification(QString::fromUtf8(notification));
+        }
+    }
+    
+    // 处理通知事件
+    void handleNotification(const QString& notification) {
+        // 注意：需要从通知中提取设备UDID，这可能需要在实现中维护设备映射
+        // 这里简化处理，使用默认逻辑
+        
+        qDebug() << "收到设备通知:" << notification;
+        
+        if (notification == NP_SYNC_WILL_START) {
+            emit syncStarted("unknown_udid");
+        } else if (notification == NP_SYNC_DID_FINISH) {
+            emit syncFinished("unknown_udid");
+        } else if (notification == NP_APP_INSTALLED) {
+            // 实际应用中需要获取Bundle ID
+            emit appInstalled("unknown_udid", "unknown_bundle_id");
+        } else if (notification == NP_APP_UNINSTALLED) {
+            emit appUninstalled("unknown_udid", "unknown_bundle_id");
+        } else if (notification == NP_BACKUP_DOMAIN_CHANGED) {
+            emit backupDomainChanged("unknown_udid");
+        } else if (notification == NP_PHONE_NUMBER_CHANGED) {
+            emit phoneNumberChanged("unknown_udid", "unknown_phone");
+        } else if (notification == NP_DEVICE_NAME_CHANGED) {
+            emit deviceNameChanged("unknown_udid", "old_name", "new_name");
+        } else if (notification == NP_TIMEZONE_CHANGED) {
+            emit timezoneChanged("unknown_udid", "new_timezone");
+        } else if (notification == NP_TRUSTED_HOST_CHANGED) {
+            emit trustedHostChanged("unknown_udid", "host_name");
+        }
+    }
+};
+
+// 增强版通知管理器，支持多设备和事件历史
+class AdvancedDeviceNotificationManager : public DeviceNotificationManager {
+    Q_OBJECT
+    
+private:
+    QMap<QString, QString> udidToClientMap_;  // 设备UDID到客户端的映射
+    QList<NotificationEvent> eventHistory_;    // 事件历史记录
+    
+    struct NotificationEvent {
+        QDateTime timestamp;
+        QString udid;
+        QString notification;
+        QVariantMap details;
+        
+        QString toString() const {
+            return QString("[%1] %2: %3")
+                .arg(timestamp.toString("yyyy-MM-dd hh:mm:ss"))
+                .arg(udid)
+                .arg(notification);
+        }
+    };
+    
+public:
+    // 添加事件到历史记录
+    void addEventToHistory(const QString& udid, const QString& notification, 
+                          const QVariantMap& details = QVariantMap()) {
+        NotificationEvent event;
+        event.timestamp = QDateTime::currentDateTime();
+        event.udid = udid;
+        event.notification = notification;
+        event.details = details;
+        
+        eventHistory_.append(event);
+        
+        // 限制历史记录数量
+        const int MAX_HISTORY = 1000;
+        if (eventHistory_.size() > MAX_HISTORY) {
+            eventHistory_.removeFirst();
+        }
+        
+        // 发送事件通知
+        emit notificationEventAdded(event);
+    }
+    
+    // 获取事件历史
+    QList<NotificationEvent> getEventHistory(const QString& udid = QString()) const {
+        if (udid.isEmpty()) {
+            return eventHistory_;
+        }
+        
+        QList<NotificationEvent> filtered;
+        for (const NotificationEvent& event : eventHistory_) {
+            if (event.udid == udid) {
+                filtered.append(event);
+            }
+        }
+        
+        return filtered;
+    }
+    
+    // 清除事件历史
+    void clearEventHistory() {
+        eventHistory_.clear();
+        emit eventHistoryCleared();
+    }
+    
+    // 导出事件历史到文件
+    bool exportEventHistory(const QString& filePath) const {
+        QFile file(filePath);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            return false;
+        }
+        
+        QTextStream out(&file);
+        out << "Timestamp,Device,Notification,Details
+";
+        
+        for (const NotificationEvent& event : eventHistory_) {
+            out << event.timestamp.toString(Qt::ISODate) << ","
+                << event.udid << ","
+                << event.notification << ",";
+            
+            if (!event.details.isEmpty()) {
+                QStringList details;
+                for (auto it = event.details.begin(); it != event.details.end(); ++it) {
+                    details.append(QString("%1=%2").arg(it.key(), it.value().toString()));
+                }
+                out << details.join(";");
+            }
+            
+            out << "
+";
+        }
+        
+        file.close();
+        return true;
+    }
+
+signals:
+    void notificationEventAdded(const NotificationEvent& event);
+    void eventHistoryCleared();
+    
+protected:
+    // 重写通知处理，添加历史记录
+    void handleNotification(const QString& notification) override {
+        // 尝试识别事件对应的设备UDID
+        QString udid = identifyDeviceForNotification(notification);
+        
+        // 创建事件详情
+        QVariantMap details;
+        
+        if (notification == NP_APP_INSTALLED || notification == NP_APP_UNINSTALLED) {
+            details["type"] = "app_change";
+        } else if (notification.contains("sync")) {
+            details["type"] = "sync";
+        } else if (notification.contains("backup")) {
+            details["type"] = "backup";
+        }
+        
+        // 添加到历史记录
+        addEventToHistory(udid, notification, details);
+        
+        // 调用基类处理
+        DeviceNotificationManager::handleNotification(notification);
+    }
+    
+private:
+    // 尝试识别通知对应的设备UDID
+    QString identifyDeviceForNotification(const QString& notification) {
+        // 实际应用中可能需要更复杂的逻辑来识别设备
+        // 这里简化处理，使用第一个已知设备或默认值
+        
+        if (!udidToClientMap_.isEmpty()) {
+            return udidToClientMap_.begin().key();
+        }
+        
+        return "unknown_device";
+    }
+};
+
+// 通知事件可视化工具
+class NotificationEventVisualizer : public QObject {
+    Q_OBJECT
+    
+private:
+    QMap<QString, int> notificationCounts_;
+    QMap<QString, QDateTime> lastNotificationTime_;
+    QDateTime startTime_;
+    
+public:
+    NotificationEventVisualizer(QObject* parent = nullptr) 
+        : QObject(parent), startTime_(QDateTime::currentDateTime()) {
+    }
+    
+    // 添加通知事件
+    void addNotificationEvent(const QString& notification, const QString& udid = QString()) {
+        // 更新计数
+        notificationCounts_[notification]++;
+        
+        // 更新最后通知时间
+        lastNotificationTime_[notification] = QDateTime::currentDateTime();
+        
+        // 发送更新信号
+        emit dataUpdated();
+    }
+    
+    // 获取通知分布数据（用于饼图）
+    QVariantMap getNotificationDistribution() const {
+        QVariantMap result;
+        
+        for (auto it = notificationCounts_.begin(); it != notificationCounts_.end(); ++it) {
+            result[it.key()] = it.value();
+        }
+        
+        return result;
+    }
+    
+    // 获取通知时间线数据（用于折线图）
+    QVariantMap getNotificationTimeline() const {
+        QVariantMap result;
+        
+        // 按小时聚合通知数据
+        QMap<int, int> hourlyCounts;
+        
+        for (auto it = lastNotificationTime_.begin(); it != lastNotificationTime_.end(); ++it) {
+            int hour = it.value().time().hour();
+            hourlyCounts[hour] += notificationCounts_[it.key()];
+        }
+        
+        // 转换为图表友好格式
+        QList<QVariant> hours;
+        QList<QVariant> counts;
+        
+        for (int i = 0; i < 24; i++) {
+            hours.append(i);
+            counts.append(hourlyCounts.value(i, 0));
+        }
+        
+        result["hours"] = hours;
+        result["counts"] = counts;
+        
+        return result;
+    }
+    
+    // 获取最频繁的通知
+    QString getMostFrequentNotification() const {
+        if (notificationCounts_.isEmpty()) {
+            return QString();
+        }
+        
+        QString mostFrequent;
+        int maxCount = 0;
+        
+        for (auto it = notificationCounts_.begin(); it != notificationCounts_.end(); ++it) {
+            if (it.value() > maxCount) {
+                maxCount = it.value();
+                mostFrequent = it.key();
+            }
+        }
+        
+        return mostFrequent;
+    }
+    
+    // 清除所有数据
+    void clear() {
+        notificationCounts_.clear();
+        lastNotificationTime_.clear();
+        startTime_ = QDateTime::currentDateTime();
+        emit dataUpdated();
+    }
+
+signals:
+    void dataUpdated();
+};
 ```
 
 ## phone-linkc项目集成
@@ -1696,6 +4330,517 @@ QImage takeScreenshotWithProfiling(idevice_t device) {
     
     return screenshot;
 }
+```
+
+## 实用示例集合
+
+### 设备管理完整示例
+
+```cpp
+// 完整的设备管理类，包含所有基础功能
+class DeviceManager {
+private:
+    QMap<QString, idevice_t> deviceConnections_;  // 设备连接池
+    QSet<QString> pairedDevices_;                  // 已配对设备列表
+    QMutex deviceMutex_;                           // 线程安全锁
+    QTimer* heartbeatTimer_;                       // 心跳定时器
+    
+public:
+    DeviceManager(QObject* parent = nullptr) : QObject(parent) {
+        // 设置心跳定时器，每30秒检查一次设备状态
+        heartbeatTimer_ = new QTimer(this);
+        connect(heartbeatTimer_, &QTimer::timeout, this, &DeviceManager::checkAllDevices);
+        heartbeatTimer_->start(30000);
+        
+        // 初始扫描
+        scanForDevices();
+    }
+    
+    ~DeviceManager() {
+        // 清理所有设备连接
+        QMutexLocker locker(&deviceMutex_);
+        for (auto it = deviceConnections_.begin(); it != deviceConnections_.end(); ++it) {
+            idevice_free(it.value());
+        }
+        deviceConnections_.clear();
+    }
+    
+    // 获取所有可用设备
+    QStringList getAvailableDevices() {
+        QStringList devices;
+        char **device_list = nullptr;
+        int count = 0;
+        
+        if (idevice_get_device_list(&device_list, &count) == IDEVICE_E_SUCCESS) {
+            for (int i = 0; i < count; i++) {
+                devices << QString::fromUtf8(device_list[i]);
+            }
+            idevice_device_list_free(device_list);
+        }
+        
+        return devices;
+    }
+    
+    // 获取设备连接（使用连接池）
+    idevice_t getDeviceConnection(const QString& udid) {
+        QMutexLocker locker(&deviceMutex_);
+        
+        if (deviceConnections_.contains(udid)) {
+            // 测试连接是否仍然有效
+            if (isConnectionValid(deviceConnections_[udid])) {
+                return deviceConnections_[udid];
+            } else {
+                // 连接无效，移除并重新创建
+                idevice_free(deviceConnections_[udid]);
+                deviceConnections_.remove(udid);
+            }
+        }
+        
+        // 创建新连接
+        idevice_t device = nullptr;
+        if (idevice_new(&device, udid.toUtf8().constData()) == IDEVICE_E_SUCCESS) {
+            deviceConnections_[udid] = device;
+            return device;
+        }
+        
+        return nullptr;
+    }
+    
+    // 测试连接是否有效
+    bool isConnectionValid(idevice_t device) {
+        if (!device) return false;
+        
+        // 尝试获取设备UDID作为连接测试
+        char *udid = nullptr;
+        bool isValid = (idevice_get_udid(device, &udid) == IDEVICE_E_SUCCESS);
+        
+        if (udid) {
+            free(udid);
+        }
+        
+        return isValid;
+    }
+    
+signals:
+    void deviceConnected(const QString& udid);
+    void deviceDisconnected(const QString& udid);
+    
+private slots:
+    void scanForDevices() {
+        QStringList currentDevices = getAvailableDevices();
+        QStringList previousDevices = deviceConnections_.keys();
+        
+        // 检查新连接的设备
+        for (const QString& udid : currentDevices) {
+            if (!previousDevices.contains(udid)) {
+                emit deviceConnected(udid);
+                qDebug() << "检测到新设备:" << udid;
+            }
+        }
+        
+        // 检查断开的设备
+        for (const QString& udid : previousDevices) {
+            if (!currentDevices.contains(udid)) {
+                // 从连接池中移除
+                QMutexLocker locker(&deviceMutex_);
+                if (deviceConnections_.contains(udid)) {
+                    idevice_free(deviceConnections_[udid]);
+                    deviceConnections_.remove(udid);
+                }
+                emit deviceDisconnected(udid);
+                qDebug() << "设备断开连接:" << udid;
+            }
+        }
+    }
+    
+    void checkAllDevices() {
+        // 心跳检查所有连接的设备
+        QMutexLocker locker(&deviceMutex_);
+        for (auto it = deviceConnections_.begin(); it != deviceConnections_.end(); ) {
+            if (!isConnectionValid(it.value())) {
+                qDebug() << "设备连接失效:" << it.key();
+                emit deviceDisconnected(it.key());
+                idevice_free(it.value());
+                it = deviceConnections_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+};
+```
+
+### 应用管理完整示例
+
+```cpp
+// 应用管理器实现
+class AppManager {
+private:
+    DeviceManager* deviceManager_;
+    QMap<QString, QPixmap> iconCache_;  // 应用图标缓存
+    
+public:
+    AppManager(DeviceManager* deviceManager, QObject* parent = nullptr)
+        : QObject(parent), deviceManager_(deviceManager) {
+    }
+    
+    // 获取所有已安装应用
+    QList<AppInfo> getAllInstalledApps(const QString& udid) {
+        QList<AppInfo> apps;
+        
+        idevice_t device = deviceManager_->getDeviceConnection(udid);
+        if (!device) {
+            qWarning() << "无法连接到设备:" << udid;
+            return apps;
+        }
+        
+        instproxy_client_t instproxy = nullptr;
+        if (instproxy_client_start_service(device, &instproxy, "phone-linkc") != INSTPROXY_E_SUCCESS) {
+            qWarning() << "无法启动应用代理服务";
+            deviceManager_->releaseDeviceConnection(udid);
+            return apps;
+        }
+        
+        // 设置浏览选项
+        plist_t options = plist_new_dict();
+        plist_t app_types = plist_new_array();
+        plist_array_append_item(app_types, plist_new_string("User"));
+        plist_array_append_item(app_types, plist_new_string("System"));
+        plist_dict_set_item(options, "ApplicationType", app_types);
+        
+        // 获取应用列表
+        plist_t result = nullptr;
+        if (instproxy_browse(instproxy, options, &result) == INSTPROXY_E_SUCCESS && result) {
+            uint32_t app_count = plist_array_get_size(result);
+            
+            for (uint32_t i = 0; i < app_count; i++) {
+                plist_t app_dict = plist_array_get_item(result, i);
+                if (app_dict) {
+                    AppInfo appInfo = parseAppInfo(app_dict);
+                    if (!appInfo.bundleId.isEmpty()) {
+                        apps.append(appInfo);
+                    }
+                }
+            }
+            
+            plist_free(result);
+        }
+        
+        plist_free(options);
+        instproxy_client_free(instproxy);
+        deviceManager_->releaseDeviceConnection(udid);
+        
+        return apps;
+    }
+    
+    // 获取应用图标
+    QPixmap getAppIcon(const QString& udid, const QString& bundleId) {
+        // 检查缓存
+        QString cacheKey = QString("%1:%2").arg(udid, bundleId);
+        if (iconCache_.contains(cacheKey)) {
+            return iconCache_[cacheKey];
+        }
+        
+        QPixmap icon;
+        
+        idevice_t device = deviceManager_->getDeviceConnection(udid);
+        if (!device) {
+            return icon;
+        }
+        
+        sbservices_client_t sbservices = nullptr;
+        if (sbservices_client_start_service(device, &sbservices, "phone-linkc") != SBSERVICES_E_SUCCESS) {
+            deviceManager_->releaseDeviceConnection(udid);
+            return icon;
+        }
+        
+        char *pngdata = nullptr;
+        uint64_t pngsize = 0;
+        
+        if (sbservices_get_icon_pngdata(sbservices, bundleId.toUtf8().constData(), 
+                                        &pngdata, &pngsize) == SBSERVICES_E_SUCCESS && pngdata) {
+            icon.loadFromData(reinterpret_cast<const uchar*>(pngdata), static_cast<int>(pngsize), "PNG");
+            free(pngdata);
+            
+            // 缓存图标
+            iconCache_[cacheKey] = icon;
+        }
+        
+        sbservices_client_free(sbservices);
+        deviceManager_->releaseDeviceConnection(udid);
+        
+        return icon;
+    }
+    
+    // 安装应用
+    bool installApp(const QString& udid, const QString& ipaPath, 
+                    const QHash<QString, QVariant>& options = QHash<QString, QVariant>()) {
+        idevice_t device = deviceManager_->getDeviceConnection(udid);
+        if (!device) {
+            return false;
+        }
+        
+        instproxy_client_t instproxy = nullptr;
+        if (instproxy_client_start_service(device, &instproxy, "phone-linkc") != INSTPROXY_E_SUCCESS) {
+            deviceManager_->releaseDeviceConnection(udid);
+            return false;
+        }
+        
+        // 准备安装选项
+        plist_t client_options = plist_new_dict();
+        
+        // 基础选项
+        plist_dict_set_item(client_options, "ApplicationType", 
+                           plist_new_string(options.value("ApplicationType", "User").toString().toUtf8().constData()));
+        
+        // 处理其他选项
+        if (options.contains("SkipUninstall")) {
+            plist_dict_set_item(client_options, "SkipUninstall", 
+                               plist_new_bool(options.value("SkipUninstall").toBool()));
+        }
+        
+        // 执行安装
+        QByteArray ipaPathBytes = ipaPath.toUtf8();
+        instproxy_error_t error = instproxy_install(instproxy, ipaPathBytes.constData(), 
+                                                   client_options, installStatusCallback, this);
+        
+        bool success = (error == INSTPROXY_E_SUCCESS);
+        
+        plist_free(client_options);
+        instproxy_client_free(instproxy);
+        deviceManager_->releaseDeviceConnection(udid);
+        
+        return success;
+    }
+    
+signals:
+    void installProgress(int percentage);
+    void installStatusChanged(const QString& status);
+    void errorOccurred(const QString& message);
+    
+private:
+    // 解析应用信息
+    AppInfo parseAppInfo(plist_t appDict) {
+        AppInfo info;
+        
+        // 使用辅助函数获取值
+        info.bundleId = getPlistStringValue(appDict, "CFBundleIdentifier");
+        info.displayName = getPlistStringValue(appDict, "CFBundleDisplayName");
+        info.version = getPlistStringValue(appDict, "CFBundleShortVersionString");
+        info.bundleVersion = getPlistStringValue(appDict, "CFBundleVersion");
+        
+        // 检查是否为系统应用
+        QString appType = getPlistStringValue(appDict, "ApplicationType");
+        info.isSystemApp = (appType == "System");
+        
+        // 获取安装日期
+        plist_t installDateNode = plist_dict_get_item(appDict, "InstallDate");
+        if (installDateNode && plist_get_node_type(installDateNode) == PLIST_DATE) {
+            int32_t secs = 0, usecs = 0;
+            plist_get_date_val(installDateNode, &secs, &usecs);
+            info.installDate = QDateTime::fromSecsSinceEpoch(secs);
+        }
+        
+        return info;
+    }
+    
+    // 获取plist字符串值
+    QString getPlistStringValue(plist_t dict, const char* key) {
+        plist_t value = plist_dict_get_item(dict, key);
+        if (value && plist_get_node_type(value) == PLIST_STRING) {
+            char *str_value = nullptr;
+            plist_get_string_val(value, &str_value);
+            if (str_value) {
+                QString result = QString::fromUtf8(str_value);
+                free(str_value);
+                return result;
+            }
+        }
+        return QString();
+    }
+    
+    // 安装状态回调
+    static void installStatusCallback(const char *operation, plist_t status, void *user_data) {
+        AppManager* manager = static_cast<AppManager*>(user_data);
+        
+        if (!status) return;
+        
+        // 获取状态
+        plist_t statusNode = plist_dict_get_item(status, "Status");
+        if (statusNode) {
+            char *statusStr = nullptr;
+            plist_get_string_val(statusNode, &statusStr);
+            if (statusStr) {
+                QString statusString = QString::fromUtf8(statusStr);
+                emit manager->installStatusChanged(statusString);
+                
+                if (statusString == "Complete") {
+                    emit manager->installProgress(100);
+                }
+                free(statusStr);
+            }
+        }
+        
+        // 获取进度
+        plist_t progressNode = plist_dict_get_item(status, "PercentComplete");
+        if (progressNode) {
+            uint64_t progress = 0;
+            plist_get_uint_val(progressNode, &progress);
+            emit manager->installProgress(static_cast<int>(progress));
+        }
+        
+        // 获取错误信息
+        plist_t errorNode = plist_dict_get_item(status, "ErrorDescription");
+        if (errorNode) {
+            char *errorStr = nullptr;
+            plist_get_string_val(errorNode, &errorStr);
+            if (errorStr) {
+                QString errorMessage = QString::fromUtf8(errorStr);
+                emit manager->errorOccurred(QString("安装错误: %1").arg(errorMessage));
+                free(errorStr);
+            }
+        }
+    }
+};
+```
+
+### 文件传输完整示例
+
+```cpp
+// 文件传输管理器实现
+class FileManager {
+private:
+    DeviceManager* deviceManager_;
+    
+public:
+    FileManager(DeviceManager* deviceManager, QObject* parent = nullptr)
+        : QObject(parent), deviceManager_(deviceManager) {
+    }
+    
+    // 上传文件到设备
+    bool uploadFile(const QString& udid, const QString& localPath, 
+                   const QString& remotePath, bool overwrite = true) {
+        QFile localFile(localPath);
+        if (!localFile.open(QIODevice::ReadOnly)) {
+            emit errorOccurred(QString("无法打开本地文件: %1").arg(localPath));
+            return false;
+        }
+        
+        idevice_t device = deviceManager_->getDeviceConnection(udid);
+        if (!device) {
+            return false;
+        }
+        
+        afc_client_t afc = nullptr;
+        if (afc_client_start_service(device, &afc, "phone-linkc") != AFC_E_SUCCESS) {
+            deviceManager_->releaseDeviceConnection(udid);
+            return false;
+        }
+        
+        // 检查文件是否已存在
+        if (!overwrite && fileExists(afc, remotePath)) {
+            afc_client_free(afc);
+            deviceManager_->releaseDeviceConnection(udid);
+            return false;
+        }
+        
+        // 确保远程目录存在
+        QString remoteDir = QFileInfo(remotePath).path();
+        if (!ensureDirectoryExists(afc, remoteDir)) {
+            afc_client_free(afc);
+            deviceManager_->releaseDeviceConnection(udid);
+            emit errorOccurred(QString("无法创建远程目录: %1").arg(remoteDir));
+            return false;
+        }
+        
+        // 打开远程文件
+        uint64_t handle = 0;
+        QByteArray remotePathBytes = remotePath.toUtf8();
+        if (afc_file_open(afc, remotePathBytes.constData(), AFC_FOPEN_WRONLY, &handle) != AFC_E_SUCCESS) {
+            afc_client_free(afc);
+            deviceManager_->releaseDeviceConnection(udid);
+            emit errorOccurred(QString("无法打开远程文件: %1").arg(remotePath));
+            return false;
+        }
+        
+        // 上传文件内容
+        qint64 totalSize = localFile.size();
+        qint64 transferred = 0;
+        
+        const int BUFFER_SIZE = 65536; // 64KB缓冲区
+        char buffer[BUFFER_SIZE];
+        
+        while (!localFile.atEnd()) {
+            qint64 bytesRead = localFile.read(buffer, BUFFER_SIZE);
+            if (bytesRead <= 0) break;
+            
+            uint32_t bytesWritten = 0;
+            if (afc_file_write(afc, handle, buffer, bytesRead, &bytesWritten) != AFC_E_SUCCESS ||
+                bytesWritten != static_cast<uint32_t>(bytesRead)) {
+                afc_file_close(afc, handle);
+                afc_client_free(afc);
+                deviceManager_->releaseDeviceConnection(udid);
+                emit errorOccurred(QString("写入文件失败: %1").arg(remotePath));
+                return false;
+            }
+            
+            transferred += bytesWritten;
+            
+            // 发送进度更新
+            emit uploadProgress(transferred, totalSize);
+        }
+        
+        // 清理资源
+        afc_file_close(afc, handle);
+        afc_client_free(afc);
+        deviceManager_->releaseDeviceConnection(udid);
+        
+        return true;
+    }
+    
+signals:
+    void uploadProgress(qint64 transferred, qint64 total);
+    void downloadProgress(qint64 transferred, qint64 total);
+    void errorOccurred(const QString& message);
+    
+private:
+    // 检查文件是否存在
+    bool fileExists(afc_client_t afc, const QString& path) {
+        char **list = nullptr;
+        QByteArray pathBytes = path.toUtf8();
+        
+        if (afc_read_directory(afc, pathBytes.constData(), &list) == AFC_E_SUCCESS) {
+            afc_dictionary_free(list);
+            return true;
+        }
+        
+        return false;
+    }
+    
+    // 确保目录存在
+    bool ensureDirectoryExists(afc_client_t afc, const QString& path) {
+        // 简化实现，实际应递归检查和创建目录
+        return afc_make_directory(afc, path.toUtf8().constData()) == AFC_E_SUCCESS;
+    }
+    
+    // 获取文件大小
+    uint64_t getFileSize(afc_client_t afc, const QString& path) {
+        char **info = nullptr;
+        uint64_t size = 0;
+        
+        if (afc_get_file_info(afc, path.toUtf8().constData(), &info) == AFC_E_SUCCESS) {
+            for (int i = 0; info[i]; i += 2) {
+                if (QString(info[i]) == "st_size" && info[i+1]) {
+                    size = QString(info[i+1]).toULongLong();
+                    break;
+                }
+            }
+            afc_dictionary_free(info);
+        }
+        
+        return size;
+    }
+};
 ```
 
 ---

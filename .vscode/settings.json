@@ -1,3 +1,9 @@
 {
-    "Codegeex.RepoIndex": true
+    "Codegeex.RepoIndex": true,
+    "cmake.sourceDirectory": "D:/JTStudio/phone-link-cross/phone-linkc",
+    "files.associations": {
+        "vector": "cpp",
+        "xstring": "cpp",
+        "xutility": "cpp"
+    }
 }

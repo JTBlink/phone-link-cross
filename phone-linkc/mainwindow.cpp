@@ -187,7 +187,6 @@ void MainWindow::onConnectButtonClicked()
 void MainWindow::onRefreshButtonClicked()
 {
     qDebug() << "手动刷新设备列表";
-    m_deviceList->clear();
     
     // 检查运行时动态库加载状态
     LibimobiledeviceDynamic& loader = LibimobiledeviceDynamic::instance();
@@ -196,19 +195,34 @@ void MainWindow::onRefreshButtonClicked()
     if (isLibraryAvailable) {
         m_statusLabel->setText("正在搜索 iOS 设备...");
         
+        // 先清空UI列表
+        m_deviceList->clear();
+        
         // 调用设备管理器的刷新方法
         m_deviceManager->refreshDevices();
         
-        // 处理完刷新后，根据结果更新界面
+        // 处理完刷新后，根据结果重新填充界面
         QApplication::processEvents(); // 让事件处理完成
         
-        if (m_deviceManager->getConnectedDevices().isEmpty()) {
+        // 手动重新填充设备列表
+        const QStringList& devices = m_deviceManager->getConnectedDevices();
+        for (const QString& udid : devices) {
+            // 获取设备名称并添加到列表
+            QString deviceName = "iOS Device"; // 默认名称
+            // 这里可以调用 getDeviceName 获取实际名称，但为了避免阻塞UI，使用简单名称
+            QListWidgetItem *item = new QListWidgetItem(QString("%1\n%2").arg(deviceName, udid));
+            item->setData(Qt::UserRole, udid);
+            m_deviceList->addItem(item);
+        }
+        
+        if (devices.isEmpty()) {
             m_statusLabel->setText("未发现 iOS 设备");
             m_infoDisplay->setPlainText("未发现 iOS 设备\n\n请确保：\n1. iOS 设备已连接到电脑\n2. 设备已解锁并信任此电脑\n3. iTunes 或其他同步软件已关闭\n\n连接设备后点击【刷新列表】按钮重新检测");
         } else {
-            m_statusLabel->setText(QString("找到 %1 台设备").arg(m_deviceManager->getConnectedDevices().size()));
+            m_statusLabel->setText(QString("找到 %1 台设备").arg(devices.size()));
         }
     } else {
+        m_deviceList->clear();
         m_statusLabel->setText("libimobiledevice 未安装 - 无法连接 iOS 设备");
         m_infoDisplay->setPlainText("libimobiledevice 未安装\n\n无法连接 iOS 设备。\n\n请安装 libimobiledevice 以支持 iOS 设备连接。\n\n安装方法：\n• macOS: brew install libimobiledevice\n• Ubuntu: sudo apt install libimobiledevice-utils\n• Windows: 请参考项目文档");
     }

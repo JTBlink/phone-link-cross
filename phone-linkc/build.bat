@@ -28,7 +28,7 @@ set "QT_BASE=D:\Qt\6.10.1\msvc2022_64"
 set "QT_CMAKE_TOOLS=D:\Qt\Tools\CMake_64\bin\cmake.exe"
 set "QT_WINDEPLOYQT=D:\Qt\6.10.1\msvc2022_64\bin\windeployqt.exe"
 
-REM Build config constants
+REM Build config constants (will be set based on parameter)
 set "BUILD_CONFIG=Release"
 set "CMAKE_BUILD_TYPE=Release"
 
@@ -83,10 +83,27 @@ echo.
 goto :eof
 
 :main_logic
+REM Parse build type parameter
+if /i "%1"=="debug" (
+    set "BUILD_CONFIG=Debug"
+    set "CMAKE_BUILD_TYPE=Debug"
+    shift
+    goto parse_remaining_args
+)
+if /i "%1"=="release" (
+    set "BUILD_CONFIG=Release"
+    set "CMAKE_BUILD_TYPE=Release"
+    shift
+    goto parse_remaining_args
+)
+
+:parse_remaining_args
 if "%1"=="check-deps" goto check_deps
 if "%1"=="install-deps" goto install_deps
 if "%1"=="help" goto show_help  
 if "%1"=="" goto init_build
+if /i "%1"=="debug" goto init_build
+if /i "%1"=="release" goto init_build
 goto show_help
 
 REM ===== Common Function Definitions =====
@@ -107,10 +124,14 @@ exit /b 1
 
 REM MSVC compiler detection function
 :detect_msvc
-REM Initialize constants
+REM Initialize constants (preserve BUILD_CONFIG and CMAKE_BUILD_TYPE)
+set "SAVED_BUILD_CONFIG=%BUILD_CONFIG%"
+set "SAVED_CMAKE_BUILD_TYPE=%CMAKE_BUILD_TYPE%"
 call :init_constants
+set "BUILD_CONFIG=%SAVED_BUILD_CONFIG%"
+set "CMAKE_BUILD_TYPE=%SAVED_CMAKE_BUILD_TYPE%"
 
-REM Try Visual Studio 2022 editions
+REM Try Visual Studio 2022 editions first
 call :try_configure_vs "%VS2022_BASE%" "Professional" "Visual Studio 17 2022" "-A x64"
 if !errorlevel!==0 goto :eof
 
@@ -139,7 +160,12 @@ goto :eof
 
 REM CMake configuration function
 :run_cmake_configure
+REM Preserve build configuration
+set "SAVED_BUILD_CONFIG=%BUILD_CONFIG%"
+set "SAVED_CMAKE_BUILD_TYPE=%CMAKE_BUILD_TYPE%"
 call :init_constants
+set "BUILD_CONFIG=%SAVED_BUILD_CONFIG%"
+set "CMAKE_BUILD_TYPE=%SAVED_CMAKE_BUILD_TYPE%"
 echo [INFO] Executing CMake configuration:
 if "%CMAKE_GENERATOR%"=="Visual Studio 17 2022" (
     echo [INFO]   cmake .. -G "%CMAKE_GENERATOR%" %CMAKE_ARCH% -DCMAKE_BUILD_TYPE=%CMAKE_BUILD_TYPE% -DQt6_DIR="%Qt6_DIR%"
@@ -155,7 +181,12 @@ goto :eof
 
 REM CMake build function
 :run_cmake_build
+REM Preserve build configuration
+set "SAVED_BUILD_CONFIG=%BUILD_CONFIG%"
+set "SAVED_CMAKE_BUILD_TYPE=%CMAKE_BUILD_TYPE%"
 call :init_constants
+set "BUILD_CONFIG=%SAVED_BUILD_CONFIG%"
+set "CMAKE_BUILD_TYPE=%SAVED_CMAKE_BUILD_TYPE%"
 echo [INFO] Executing CMake build:
 if "%CMAKE_GENERATOR%"=="Visual Studio 17 2022" (
     echo [INFO]   cmake --build . --config %BUILD_CONFIG% --parallel
@@ -340,8 +371,12 @@ if defined COMPILER_TYPE (
 )
 
 :configure_qt
-REM Configure Qt MSVC environment
+REM Configure Qt MSVC environment (preserve BUILD_CONFIG and CMAKE_BUILD_TYPE)
+set "SAVED_BUILD_CONFIG=%BUILD_CONFIG%"
+set "SAVED_CMAKE_BUILD_TYPE=%CMAKE_BUILD_TYPE%"
 call :init_constants
+set "BUILD_CONFIG=%SAVED_BUILD_CONFIG%"
+set "CMAKE_BUILD_TYPE=%SAVED_CMAKE_BUILD_TYPE%"
 REM Check for MSVC-compiled Qt versions
 if exist "%QT_BASE%\lib\cmake\Qt6\Qt6Config.cmake" (
     set "PATH=%QT_BASE%\bin;!PATH!"
@@ -433,24 +468,37 @@ if exist "%INSTALL_SCRIPT%" (
 goto end
 
 :show_help
-echo Usage: build.bat [option]
+echo Usage: build.bat [build_type] [option]
+echo.
+echo Build Types:
+echo   debug                   - Build in Debug mode (with debug symbols)
+echo   release                 - Build in Release mode (optimized, default)
 echo.
 echo Options:
 echo   check-deps              - Check dependencies
 echo   install-deps            - Install all dependencies
 echo   help                    - Show this help
-echo   (no args)               - Run full build
+echo   (no args)               - Run full build (Release mode)
 echo.
 echo Examples:
-echo   build.bat                           - Run full build process
+echo   build.bat                           - Run full Release build
+echo   build.bat debug                     - Run full Debug build
+echo   build.bat release                   - Run full Release build
 echo   build.bat check-deps               - Check all dependencies
 echo   build.bat install-deps             - Install all dependencies
+echo   build.bat debug check-deps         - Check deps (Debug mode set)
+echo   build.bat release install-deps     - Install deps (Release mode set)
+echo.
+echo Build Mode Features:
+echo   Debug:   Includes debug symbols, no optimization, larger executable
+echo   Release: Optimized build, smaller executable, better performance
 echo.
 echo Recommended workflow:
 echo   1. build.bat install-deps          - Install dependencies
-echo   2. Restart command prompt          - Apply environment variables
+echo   2. Restart command prompt          - Apply environment variables  
 echo   3. build.bat check-deps           - Verify installation
-echo   4. build.bat                      - Build project
+echo   4. build.bat debug                - Build for development
+echo   5. build.bat release              - Build for production
 echo.
 goto end
 
@@ -459,6 +507,7 @@ goto init_build
 
 :start_build
 call :log_message "Starting full build process..."
+call :log_info "Build configuration: %BUILD_CONFIG% mode"
 call :log_newline
 goto check_deps_inline
 

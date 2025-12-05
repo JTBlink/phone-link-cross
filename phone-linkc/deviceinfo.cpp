@@ -126,7 +126,8 @@ QString DeviceInfoManager::getStringValue(lockdownd_client_t lockdown, const cha
                 loader.plist_get_string_val(value, &str_value);
                 if (str_value) {
                     result = QString::fromUtf8(str_value);
-                    free(str_value);
+                    // free(str_value); // 不要调用 free()，因为 plist_get_string_val 分配的内存
+                    // 会在 plist_free() 时一起释放
                 }
             }
         }
