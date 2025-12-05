@@ -44,6 +44,20 @@ build.bat           # Windows 主入口脚本
 - ✅ **模拟模式**: 无需真实设备即可测试
 - ✅ **跨平台支持**: Windows、macOS、Linux
 
+### 应用截图
+
+<p align="center">
+  <img src="phone-linkc/assets/images/screenshots/main-window_windows.png" alt="主窗口 - 已连接设备" width="800"/>
+  <br/>
+  <em>主窗口 - 已连接设备显示</em>
+</p>
+
+<p align="center">
+  <img src="phone-linkc/assets/images/screenshots/main-window_windows_empty.png" alt="主窗口 - 空状态" width="800"/>
+  <br/>
+  <em>主窗口 - 无设备连接状态</em>
+</p>
+
 ## 项目结构
 
 ```
