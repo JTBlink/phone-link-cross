@@ -25,6 +25,8 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onDeviceDisconnected);
     connect(m_deviceManager, &DeviceManager::errorOccurred,
             this, &MainWindow::onDeviceError);
+    connect(m_deviceManager, &DeviceManager::noDevicesFound,
+            this, &MainWindow::onNoDevicesFound);
     
     // 启动设备发现
     m_deviceManager->startDiscovery();
@@ -82,8 +84,9 @@ void MainWindow::setupUI()
     m_infoDisplay = new QTextEdit;
     m_infoDisplay->setReadOnly(true);
     
-    // 根据运行时动态库加载状态设置初始文本
-    updateInitialDisplayText();
+    // 初始化状态标签并根据运行时动态库加载状态设置初始文本
+    m_statusLabel = new QLabel;
+    updateDisplayText(getInitialInfoText(), getInitialStatusText());
     
     // 添加到分割器
     m_mainSplitter->addWidget(leftWidget);
@@ -95,7 +98,7 @@ void MainWindow::setupUI()
     QVBoxLayout *mainLayout = new QVBoxLayout(m_centralWidget);
     mainLayout->addWidget(m_mainSplitter);
     
-    // 状态栏 - 在 updateInitialDisplayText() 中创建
+    // 状态栏
     statusBar()->addWidget(m_statusLabel);
     
     // 初始状态
@@ -110,7 +113,7 @@ void MainWindow::onDeviceFound(const QString &udid, const QString &name)
     item->setData(Qt::UserRole, udid);
     m_deviceList->addItem(item);
     
-    m_statusLabel->setText(QString("找到 %1 台设备").arg(m_deviceList->count()));
+    updateDisplayText(QString(), QString("找到 %1 台设备").arg(m_deviceList->count()));
 }
 
 void MainWindow::onDeviceLost(const QString &udid)
@@ -126,13 +129,13 @@ void MainWindow::onDeviceLost(const QString &udid)
         }
     }
     
-    m_statusLabel->setText(QString("找到 %1 台设备").arg(m_deviceList->count()));
+    updateDisplayText(QString(), QString("找到 %1 台设备").arg(m_deviceList->count()));
 }
 
 void MainWindow::onDeviceConnected(const QString &udid)
 {
     qDebug() << "UI: 设备已连接" << udid;
-    m_statusLabel->setText(QString("已连接到设备: %1").arg(udid));
+    updateDisplayText(QString(), QString("已连接到设备: %1").arg(udid));
     updateConnectionStatus();
     updateDeviceInfo(udid);
 }
@@ -140,8 +143,7 @@ void MainWindow::onDeviceConnected(const QString &udid)
 void MainWindow::onDeviceDisconnected()
 {
     qDebug() << "UI: 设备已断开连接";
-    m_statusLabel->setText("设备已断开连接");
-    m_infoDisplay->setPlainText("设备已断开连接");
+    updateDisplayText("设备已断开连接", "设备已断开连接");
     updateConnectionStatus();
 }
 
@@ -149,7 +151,13 @@ void MainWindow::onDeviceError(const QString &error)
 {
     qDebug() << "UI: 设备错误" << error;
     QMessageBox::warning(this, "设备错误", error);
-    m_statusLabel->setText(QString("错误: %1").arg(error));
+    updateDisplayText(QString(), QString("错误: %1").arg(error));
+}
+
+void MainWindow::onNoDevicesFound()
+{
+    qDebug() << "UI: 未发现任何设备";
+    updateDisplayText(getNoDeviceInfoText(), "未发现 iOS 设备");
 }
 
 void MainWindow::onDeviceSelectionChanged()
@@ -157,9 +165,9 @@ void MainWindow::onDeviceSelectionChanged()
     QListWidgetItem *current = m_deviceList->currentItem();
     if (current) {
         QString udid = current->data(Qt::UserRole).toString();
-        if (!m_deviceManager->isConnected() || 
+        if (!m_deviceManager->isConnected() ||
             m_deviceManager->getCurrentDevice() != udid) {
-            m_infoDisplay->setPlainText(QString("选中设备: %1\n点击 '连接设备' 或 '获取信息' 按钮").arg(udid));
+            updateDisplayText(QString("选中设备: %1\n点击 '连接设备' 或 '获取信息' 按钮").arg(udid));
         }
     }
     updateConnectionStatus();
@@ -193,7 +201,7 @@ void MainWindow::onRefreshButtonClicked()
     bool isLibraryAvailable = loader.isInitialized();
     
     if (isLibraryAvailable) {
-        m_statusLabel->setText("正在搜索 iOS 设备...");
+        updateDisplayText(QString(), "正在搜索 iOS 设备...");
         
         // 先清空UI列表
         m_deviceList->clear();
@@ -216,15 +224,14 @@ void MainWindow::onRefreshButtonClicked()
         }
         
         if (devices.isEmpty()) {
-            m_statusLabel->setText("未发现 iOS 设备");
-            m_infoDisplay->setPlainText("未发现 iOS 设备\n\n请确保：\n1. iOS 设备已连接到电脑\n2. 设备已解锁并信任此电脑\n3. iTunes 或其他同步软件已关闭\n\n连接设备后点击【刷新列表】按钮重新检测");
+            updateDisplayText(getNoDeviceInfoText(), "未发现 iOS 设备");
         } else {
-            m_statusLabel->setText(QString("找到 %1 台设备").arg(devices.size()));
+            updateDisplayText(QString(), QString("找到 %1 台设备").arg(devices.size()));
         }
     } else {
         m_deviceList->clear();
-        m_statusLabel->setText("libimobiledevice 未安装 - 无法连接 iOS 设备");
-        m_infoDisplay->setPlainText("libimobiledevice 未安装\n\n无法连接 iOS 设备。\n\n请安装 libimobiledevice 以支持 iOS 设备连接。\n\n安装方法：\n• macOS: brew install libimobiledevice\n• Ubuntu: sudo apt install libimobiledevice-utils\n• Windows: 请参考项目文档");
+        updateDisplayText(getLibraryNotInstalledInfoText(),
+                         "libimobiledevice 未安装 - 无法连接 iOS 设备");
     }
 }
 
@@ -304,17 +311,52 @@ void MainWindow::updateConnectionStatus()
     m_getInfoButton->setEnabled(hasSelection);
 }
 
-void MainWindow::updateInitialDisplayText()
+void MainWindow::updateDisplayText(const QString &infoText,
+                                   const QString &statusText,
+                                   bool createStatusLabel)
 {
-    // 检查运行时动态库加载状态
-    LibimobiledeviceDynamic& loader = LibimobiledeviceDynamic::instance();
-    bool isLibraryAvailable = loader.isInitialized();
+    Q_UNUSED(createStatusLabel) // 保留参数以兼容旧代码，但不再使用
     
-    if (isLibraryAvailable) {
-        m_infoDisplay->setPlainText("未发现 iOS 设备\n\n请确保：\n1. iOS 设备已连接到电脑\n2. 设备已解锁并信任此电脑\n3. iTunes 或其他同步软件已关闭\n\n连接设备后点击【刷新列表】按钮重新检测");
-        m_statusLabel = new QLabel("正在搜索 iOS 设备...");
-    } else {
-        m_infoDisplay->setPlainText("libimobiledevice 未安装\n\n无法连接 iOS 设备。\n\n请安装 libimobiledevice 以支持 iOS 设备连接。\n\n安装方法：\n• macOS: brew install libimobiledevice\n• Ubuntu: sudo apt install libimobiledevice-utils\n• Windows: 请参考项目文档");
-        m_statusLabel = new QLabel("libimobiledevice 未安装 - 无法连接 iOS 设备");
+    if (!infoText.isEmpty() && m_infoDisplay) {
+        m_infoDisplay->setPlainText(infoText);
     }
+    
+    if (!statusText.isEmpty() && m_statusLabel) {
+        m_statusLabel->setText(statusText);
+    }
+}
+
+QString MainWindow::getNoDeviceInfoText() const
+{
+    return "未发现 iOS 设备\n\n"
+           "请确保：\n"
+           "1. iOS 设备已连接到电脑\n"
+           "2. 设备已解锁并信任此电脑\n"
+           "3. iTunes 或其他同步软件已关闭\n\n"
+           "连接设备后点击【刷新列表】按钮重新检测";
+}
+
+QString MainWindow::getLibraryNotInstalledInfoText() const
+{
+    return "libimobiledevice 未安装\n\n"
+           "无法连接 iOS 设备。\n\n"
+           "请安装 libimobiledevice 以支持 iOS 设备连接。\n\n"
+           "安装方法：\n"
+           "• macOS: brew install libimobiledevice\n"
+           "• Ubuntu: sudo apt install libimobiledevice-utils\n"
+           "• Windows: 请参考项目文档";
+}
+
+QString MainWindow::getInitialInfoText() const
+{
+    LibimobiledeviceDynamic& loader = LibimobiledeviceDynamic::instance();
+    return loader.isInitialized() ? getNoDeviceInfoText() : getLibraryNotInstalledInfoText();
+}
+
+QString MainWindow::getInitialStatusText() const
+{
+    LibimobiledeviceDynamic& loader = LibimobiledeviceDynamic::instance();
+    return loader.isInitialized()
+           ? "正在搜索 iOS 设备..."
+           : "libimobiledevice 未安装 - 无法连接 iOS 设备";
 }

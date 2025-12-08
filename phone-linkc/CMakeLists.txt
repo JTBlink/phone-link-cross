@@ -191,6 +191,8 @@ set(SOURCES
     # Platform Layer
     ${SRC_DIR}/platform/libimobiledevice_dynamic.cpp
     ${SRC_DIR}/platform/libimobiledevice_dynamic.h
+    ${SRC_DIR}/platform/lockdown_dynamic.h
+    ${SRC_DIR}/platform/plist_dynamic.h
 )
 
 qt_add_executable(phone-linkc

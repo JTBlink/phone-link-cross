@@ -37,6 +37,7 @@ signals:
     void deviceConnected(const QString &udid);
     void deviceDisconnected();
     void errorOccurred(const QString &error);
+    void noDevicesFound();  // 扫描完成但没有发现任何设备
 
 private:
     QStringList m_knownDevices;

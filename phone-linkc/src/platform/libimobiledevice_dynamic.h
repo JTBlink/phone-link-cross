@@ -1,137 +1,321 @@
+/**
+ * @file libimobiledevice_dynamic.h
+ * @brief libimobiledevice 动态库加载器头文件
+ *
+ * 本文件定义了用于在运行时动态加载 libimobiledevice 库的类。
+ * libimobiledevice 是一个跨平台的开源库，用于与 iOS 设备进行通信。
+ *
+ * 通过动态加载的方式，可以：
+ * - 避免编译时对 libimobiledevice 库的硬依赖
+ * - 在库不存在时优雅降级
+ * - 支持不同版本的库
+ *
+ * @note 目前主要支持 Windows 平台的动态加载
+ *
+ * @see https://libimobiledevice.org/
+ */
+
 #ifndef LIBIMOBILEDEVICE_DYNAMIC_H
 #define LIBIMOBILEDEVICE_DYNAMIC_H
 
+/* ============================================================================
+ * 平台相关头文件
+ * ============================================================================ */
+
 #ifdef _WIN32
-#include <windows.h>
+#include <windows.h>  // Windows API，用于动态库加载 (LoadLibrary, GetProcAddress 等)
 #endif
 
-#include <QString>
-#include <QDebug>
+/* ============================================================================
+ * Qt 框架头文件
+ * ============================================================================ */
 
-// 前向声明libimobiledevice结构体
-typedef struct idevice_private idevice_private;
-typedef idevice_private* idevice_t;
-typedef struct lockdownd_client_private lockdownd_client_private;
-typedef lockdownd_client_private* lockdownd_client_t;
-typedef struct plist_node* plist_t;
+#include <QString>    // Qt 字符串类，用于路径处理
+#include <QDebug>     // Qt 调试输出
 
-// 错误码枚举
-typedef enum {
-    IDEVICE_E_SUCCESS = 0,
-    IDEVICE_E_INVALID_ARG = -1,
-    IDEVICE_E_UNKNOWN_ERROR = -2,
-    IDEVICE_E_NO_DEVICE = -3,
-    IDEVICE_E_NOT_ENOUGH_DATA = -4,
-    IDEVICE_E_BAD_HEADER = -5,
-    IDEVICE_E_SSL_ERROR = -6,
-    IDEVICE_E_TIMEOUT = -7
-} idevice_error_t;
+/* ============================================================================
+ * libimobiledevice 官方头文件
+ *
+ * 直接使用官方头文件以确保类型定义与库完全一致，避免 ABI 不兼容问题。
+ * ============================================================================ */
 
-typedef enum {
-    LOCKDOWN_E_SUCCESS = 0,
-    LOCKDOWN_E_INVALID_ARG = -1,
-    LOCKDOWN_E_INVALID_CONF = -2,
-    LOCKDOWN_E_PLIST_ERROR = -3,
-    LOCKDOWN_E_PAIRING_FAILED = -4,
-    LOCKDOWN_E_SSL_ERROR = -5,
-    LOCKDOWN_E_DICT_ERROR = -6,
-    LOCKDOWN_E_NOT_ENOUGH_DATA = -7,
-    LOCKDOWN_E_MUX_ERROR = -8
-} lockdownd_error_t;
+#include <libimobiledevice/libimobiledevice.h>
 
-// 事件类型枚举
-typedef enum {
-    IDEVICE_DEVICE_ADD = 1,
-    IDEVICE_DEVICE_REMOVE = 2,
-    IDEVICE_DEVICE_PAIRED = 3
-} idevice_event_type;
+/* ============================================================================
+ * 相关动态库加载器头文件
+ *
+ * plist 和 lockdownd 相关的函数指针类型定义在独立的头文件中。
+ * ============================================================================ */
 
-typedef struct {
-    idevice_event_type event;
-    char* udid;
-    int conn_type;
-} idevice_event_t;
+#include "plist_dynamic.h"
+#include "lockdown_dynamic.h"
 
-// plist节点类型
-typedef enum {
-    PLIST_BOOLEAN,
-    PLIST_UINT,
-    PLIST_REAL,
-    PLIST_STRING,
-    PLIST_ARRAY,
-    PLIST_DICT,
-    PLIST_DATE,
-    PLIST_DATA,
-    PLIST_KEY,
-    PLIST_UID,
-    PLIST_NONE
-} plist_type;
+/* ============================================================================
+ * idevice 函数指针类型定义
+ *
+ * 这些类型定义用于动态加载 libimobiledevice 核心库函数。
+ * ============================================================================ */
 
-// 函数指针类型定义
-typedef idevice_error_t (*idevice_get_device_list_func)(char ***devices, int *count);
-typedef idevice_error_t (*idevice_device_list_free_func)(char **devices);
-typedef idevice_error_t (*idevice_new_func)(idevice_t *device, const char *udid);
-typedef idevice_error_t (*idevice_free_func)(idevice_t device);
-typedef idevice_error_t (*idevice_event_subscribe_func)(void (*callback)(const idevice_event_t *event, void *user_data), void *user_data);
-typedef idevice_error_t (*idevice_event_unsubscribe_func)(void);
-
-typedef lockdownd_error_t (*lockdownd_client_new_with_handshake_func)(idevice_t device, lockdownd_client_t *client, const char *label);
-typedef lockdownd_error_t (*lockdownd_client_free_func)(lockdownd_client_t client);
-typedef lockdownd_error_t (*lockdownd_get_value_func)(lockdownd_client_t client, const char *domain, const char *key, plist_t *value);
-
-typedef void (*plist_free_func)(plist_t plist);
-typedef plist_type (*plist_get_node_type_func)(plist_t node);
-typedef void (*plist_get_string_val_func)(plist_t node, char **val);
-typedef void (*plist_get_bool_val_func)(plist_t node, uint8_t *val);
-typedef void (*plist_get_uint_val_func)(plist_t node, uint64_t *val);
+/* --------------------------------------------------------------------------
+ * idevice (设备管理) 函数指针类型
+ * -------------------------------------------------------------------------- */
 
 /**
- * 动态库加载器类
- * 负责在Windows上动态加载libimobiledevice和plist DLL
+ * Get a list of UDIDs of currently available devices (USBMUX devices only).
+ *
+ * @param devices List of UDIDs of devices that are currently available.
+ *   This list is terminated by a NULL pointer.
+ * @param count Number of devices found.
+ *
+ * @return IDEVICE_E_SUCCESS on success or an error value when an error occurred.
+ *
+ * @note This function only returns the UDIDs of USBMUX devices. To also include
+ *   network devices in the list, use idevice_get_device_list_extended().
+ * @see idevice_get_device_list_extended
+ *
+ * @原型 idevice_error_t idevice_get_device_list(char ***devices, int *count);
+ */
+typedef idevice_error_t (*idevice_get_device_list_func)(char ***devices, int *count);
+
+/**
+ * Free a list of device UDIDs.
+ *
+ * @param devices List of UDIDs to free.
+ *
+ * @return Always returnes IDEVICE_E_SUCCESS.
+ *
+ * @原型 idevice_error_t idevice_device_list_free(char **devices);
+ */
+typedef idevice_error_t (*idevice_device_list_free_func)(char **devices);
+
+/**
+ * Creates an idevice_t structure for the device specified by UDID,
+ *  if the device is available (USBMUX devices only).
+ *
+ * @note The resulting idevice_t structure has to be freed with
+ * idevice_free() if it is no longer used.
+ * If you need to connect to a device available via network, use
+ * idevice_new_with_options() and include IDEVICE_LOOKUP_NETWORK in options.
+ *
+ * @see idevice_new_with_options
+ *
+ * @param device Upon calling this function, a pointer to a location of type
+ *  idevice_t. On successful return, this location will be populated.
+ * @param udid The UDID to match.
+ *
+ * @return IDEVICE_E_SUCCESS if ok, otherwise an error code.
+ *
+ * @原型 idevice_error_t idevice_new(idevice_t *device, const char *udid);
+ */
+typedef idevice_error_t (*idevice_new_func)(idevice_t *device, const char *udid);
+
+/**
+ * Cleans up an idevice structure, then frees the structure itself.
+ *
+ * @param device idevice_t to free.
+ *
+ * @原型 idevice_error_t idevice_free(idevice_t device);
+ */
+typedef idevice_error_t (*idevice_free_func)(idevice_t device);
+
+/**
+ * Register a callback function that will be called when device add/remove
+ * events occur.
+ *
+ * @param callback Callback function to call.
+ * @param user_data Application-specific data passed as parameter
+ *   to the registered callback function.
+ *
+ * @return IDEVICE_E_SUCCESS on success or an error value when an error occurred.
+ *
+ * @原型 idevice_error_t idevice_event_subscribe(idevice_event_cb_t callback, void *user_data);
+ */
+typedef idevice_error_t (*idevice_event_subscribe_func)(idevice_event_cb_t callback, void *user_data);
+
+/**
+ * Release the event callback function that has been registered with
+ *  idevice_event_subscribe().
+ *
+ * @return IDEVICE_E_SUCCESS on success or an error value when an error occurred.
+ *
+ * @原型 idevice_error_t idevice_event_unsubscribe(void);
+ */
+typedef idevice_error_t (*idevice_event_unsubscribe_func)(void);
+
+/* ============================================================================
+ * LibimobiledeviceDynamic 类
+ *
+ * 负责在运行时动态加载 libimobiledevice 和 plist 动态库，
+ * 并提供对库函数的访问。使用单例模式确保全局只有一个实例。
+ * ============================================================================ */
+
+/**
+ * @brief 动态库加载器类
+ *
+ * 本类负责在 Windows 平台上动态加载 libimobiledevice 和 plist DLL，
+ * 并导出库函数供其他模块使用。
+ *
+ * 使用方法：
+ * @code
+ * auto& lib = LibimobiledeviceDynamic::instance();
+ * if (lib.initialize()) {
+ *     // 使用库函数
+ *     char** devices = nullptr;
+ *     int count = 0;
+ *     lib.idevice_get_device_list(&devices, &count);
+ *     // ...
+ * }
+ * @endcode
+ *
+ * @note
+ * - 使用单例模式，通过 instance() 获取唯一实例
+ * - 线程安全需要调用者自行保证
+ * - 目前仅支持 Windows 平台
  */
 class LibimobiledeviceDynamic {
 public:
+    /* ========================================================================
+     * 公共静态方法
+     * ======================================================================== */
+    
+    /**
+     * @brief 获取单例实例
+     *
+     * @return LibimobiledeviceDynamic& 类的唯一实例引用
+     *
+     * @note 首次调用时会创建实例
+     */
     static LibimobiledeviceDynamic& instance();
     
+    /* ========================================================================
+     * 公共成员方法
+     * ======================================================================== */
+    
+    /**
+     * @brief 初始化动态库
+     *
+     * 加载 libimobiledevice 和 plist 动态库，并解析所有需要的函数地址。
+     *
+     * @return true 初始化成功，所有函数已加载
+     * @return false 初始化失败（库文件不存在或函数解析失败）
+     *
+     * @note
+     * - 可以多次调用，已初始化时直接返回 true
+     * - 失败时会输出调试日志
+     */
     bool initialize();
+    
+    /**
+     * @brief 清理并卸载动态库
+     *
+     * 释放已加载的动态库，将所有函数指针置为 nullptr。
+     *
+     * @note 调用后需要重新 initialize() 才能使用库函数
+     */
     void cleanup();
+    
+    /**
+     * @brief 检查是否已初始化
+     *
+     * @return true 已成功初始化
+     * @return false 未初始化或初始化失败
+     */
     bool isInitialized() const { return m_initialized; }
     
-    // libimobiledevice 函数
-    idevice_get_device_list_func idevice_get_device_list;
-    idevice_device_list_free_func idevice_device_list_free;
-    idevice_new_func idevice_new;
-    idevice_free_func idevice_free;
-    idevice_event_subscribe_func idevice_event_subscribe;
-    idevice_event_unsubscribe_func idevice_event_unsubscribe;
+    /* ========================================================================
+     * libimobiledevice 库函数指针
+     *
+     * 这些成员变量在 initialize() 成功后指向对应的库函数。
+     * 使用前请确保 isInitialized() 返回 true。
+     * ======================================================================== */
     
-    // lockdownd 函数
-    lockdownd_client_new_with_handshake_func lockdownd_client_new_with_handshake;
-    lockdownd_client_free_func lockdownd_client_free;
-    lockdownd_get_value_func lockdownd_get_value;
+    idevice_get_device_list_func idevice_get_device_list;       ///< 获取设备列表
+    idevice_device_list_free_func idevice_device_list_free;     ///< 释放设备列表
+    idevice_new_func idevice_new;                               ///< 创建设备句柄
+    idevice_free_func idevice_free;                             ///< 释放设备句柄
+    idevice_event_subscribe_func idevice_event_subscribe;       ///< 订阅设备事件
+    idevice_event_unsubscribe_func idevice_event_unsubscribe;   ///< 取消订阅事件
     
-    // plist 函数
-    plist_free_func plist_free;
-    plist_get_node_type_func plist_get_node_type;
-    plist_get_string_val_func plist_get_string_val;
-    plist_get_bool_val_func plist_get_bool_val;
-    plist_get_uint_val_func plist_get_uint_val;
+    /* ========================================================================
+     * lockdownd 服务函数指针
+     *
+     * lockdownd 是 iOS 设备上的核心服务，用于设备配对和信息查询。
+     * ======================================================================== */
+    
+    lockdownd_client_new_with_handshake_func lockdownd_client_new_with_handshake;  ///< 创建客户端
+    lockdownd_client_free_func lockdownd_client_free;                               ///< 释放客户端
+    lockdownd_get_value_func lockdownd_get_value;                                   ///< 获取设备属性
+    
+    /* ========================================================================
+     * plist 库函数指针
+     *
+     * plist 函数用于解析从设备返回的属性列表数据。
+     * ======================================================================== */
+    
+    plist_free_func plist_free;                       ///< 释放 plist 节点
+    plist_get_node_type_func plist_get_node_type;     ///< 获取节点类型
+    plist_get_string_val_func plist_get_string_val;   ///< 获取字符串值
+    plist_get_bool_val_func plist_get_bool_val;       ///< 获取布尔值
+    plist_get_uint_val_func plist_get_uint_val;       ///< 获取整数值
     
 private:
+    /* ========================================================================
+     * 私有构造函数和析构函数（单例模式）
+     * ======================================================================== */
+    
+    /**
+     * @brief 私有构造函数
+     *
+     * 初始化所有成员变量为默认值（函数指针为 nullptr）。
+     */
     LibimobiledeviceDynamic();
+    
+    /**
+     * @brief 私有析构函数
+     *
+     * 自动调用 cleanup() 释放资源。
+     */
     ~LibimobiledeviceDynamic();
+    
+    // 禁止拷贝和赋值（单例模式）
     LibimobiledeviceDynamic(const LibimobiledeviceDynamic&) = delete;
     LibimobiledeviceDynamic& operator=(const LibimobiledeviceDynamic&) = delete;
     
+    /* ========================================================================
+     * 私有辅助方法
+     * ======================================================================== */
+    
+    /**
+     * @brief 加载动态库
+     *
+     * @param path 动态库文件路径
+     * @return true 加载成功
+     * @return false 加载失败
+     */
     bool loadLibrary(const QString& path);
+    
+    /**
+     * @brief 从动态库加载函数
+     *
+     * @tparam T 函数指针类型
+     * @param functionName 函数名称
+     * @param functionPtr [out] 函数指针引用
+     * @param library 动态库句柄
+     * @return true 加载成功
+     * @return false 加载失败（函数不存在）
+     */
     template<typename T>
     bool loadFunction(const QString& functionName, T& functionPtr, HMODULE library);
     
-    bool m_initialized;
+    /* ========================================================================
+     * 私有成员变量
+     * ======================================================================== */
+    
+    bool m_initialized;  ///< 初始化状态标志
     
 #ifdef _WIN32
-    HMODULE m_imobiledeviceLib;
-    HMODULE m_plistLib;
+    HMODULE m_imobiledeviceLib;  ///< libimobiledevice 动态库句柄
+    HMODULE m_plistLib;          ///< plist 动态库句柄
 #endif
 };
 

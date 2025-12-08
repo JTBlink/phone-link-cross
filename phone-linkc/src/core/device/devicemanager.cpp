@@ -94,6 +94,7 @@ void DeviceManager::scanCurrentDevices()
     LibimobiledeviceDynamic& loader = LibimobiledeviceDynamic::instance();
     if (!loader.isInitialized() || !loader.idevice_get_device_list || !loader.idevice_device_list_free) {
         qDebug() << "获取设备列表失败 - 动态库未正确加载";
+        emit noDevicesFound();
         return;
     }
     
@@ -103,6 +104,7 @@ void DeviceManager::scanCurrentDevices()
     // 获取设备列表
     if (loader.idevice_get_device_list(&device_list, &device_count) != IDEVICE_E_SUCCESS) {
         qDebug() << "获取设备列表失败";
+        emit noDevicesFound();
         return;
     }
 
@@ -138,6 +140,11 @@ void DeviceManager::scanCurrentDevices()
     
     // 清理设备列表
     loader.idevice_device_list_free(device_list);
+    
+    // 如果没有发现任何设备，发送信号通知 UI
+    if (m_knownDevices.isEmpty()) {
+        emit noDevicesFound();
+    }
 }
 
 bool DeviceManager::connectToDevice(const QString &udid)
