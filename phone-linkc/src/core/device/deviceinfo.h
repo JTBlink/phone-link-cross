@@ -4,9 +4,7 @@
 #include <QObject>
 #include <QVariantMap>
 
-// Forward declarations for libimobiledevice types (used with dynamic loading)
-typedef struct lockdownd_client_private lockdownd_client_private;
-typedef lockdownd_client_private* lockdownd_client_t;
+#include <libimobiledevice/lockdown.h>
 
 struct DeviceInfo {
     QString udid;

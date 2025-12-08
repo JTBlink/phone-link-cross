@@ -5,11 +5,8 @@
 #include <QStringList>
 #include <QVariantMap>
 
-// Forward declarations for libimobiledevice types (used with dynamic loading)
-typedef struct idevice_private idevice_private;
-typedef idevice_private* idevice_t;
-typedef struct lockdownd_client_private lockdownd_client_private;
-typedef lockdownd_client_private* lockdownd_client_t;
+#include <libimobiledevice/libimobiledevice.h>
+#include <libimobiledevice/lockdown.h>
 
 class DeviceManager : public QObject
 {
