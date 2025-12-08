@@ -45,61 +45,27 @@ MainWindow::~MainWindow()
 
 void MainWindow::setupUI()
 {
-    // 创建中央widget
-    m_centralWidget = new QWidget;
-    setCentralWidget(m_centralWidget);
-    
-    // 创建主分割器
-    m_mainSplitter = new QSplitter(Qt::Horizontal, m_centralWidget);
-    
-    // 左侧设备列表
-    QWidget *leftWidget = new QWidget;
-    QVBoxLayout *leftLayout = new QVBoxLayout(leftWidget);
-    
-    // 设备列表
-    m_deviceList = new QListWidget;
-    connect(m_deviceList, &QListWidget::itemSelectionChanged,
+    // 连接设备列表信号
+    connect(ui->deviceList, &QListWidget::itemSelectionChanged,
             this, &MainWindow::onDeviceSelectionChanged);
-    leftLayout->addWidget(m_deviceList);
     
-    // 按钮布局
-    QHBoxLayout *buttonLayout = new QHBoxLayout;
-    m_connectButton = new QPushButton("连接设备");
-    m_refreshButton = new QPushButton("刷新列表");
-    m_getInfoButton = new QPushButton("获取信息");
-    
-    connect(m_connectButton, &QPushButton::clicked,
+    // 连接按钮信号
+    connect(ui->connectButton, &QPushButton::clicked,
             this, &MainWindow::onConnectButtonClicked);
-    connect(m_refreshButton, &QPushButton::clicked,
+    connect(ui->refreshButton, &QPushButton::clicked,
             this, &MainWindow::onRefreshButtonClicked);
-    connect(m_getInfoButton, &QPushButton::clicked,
+    connect(ui->getInfoButton, &QPushButton::clicked,
             this, &MainWindow::onGetInfoButtonClicked);
     
-    buttonLayout->addWidget(m_connectButton);
-    buttonLayout->addWidget(m_refreshButton);
-    buttonLayout->addWidget(m_getInfoButton);
-    leftLayout->addLayout(buttonLayout);
+    // 设置分割器拉伸因子
+    ui->mainSplitter->setStretchFactor(0, 1);
+    ui->mainSplitter->setStretchFactor(1, 2);
     
-    // 右侧信息显示
-    m_infoDisplay = new QTextEdit;
-    m_infoDisplay->setReadOnly(true);
+    // 将状态标签添加到状态栏
+    statusBar()->addWidget(ui->statusLabel);
     
     // 初始化状态标签并根据运行时动态库加载状态设置初始文本
-    m_statusLabel = new QLabel;
     updateDisplayText(getInitialInfoText(), getInitialStatusText());
-    
-    // 添加到分割器
-    m_mainSplitter->addWidget(leftWidget);
-    m_mainSplitter->addWidget(m_infoDisplay);
-    m_mainSplitter->setStretchFactor(0, 1);
-    m_mainSplitter->setStretchFactor(1, 2);
-    
-    // 主布局
-    QVBoxLayout *mainLayout = new QVBoxLayout(m_centralWidget);
-    mainLayout->addWidget(m_mainSplitter);
-    
-    // 状态栏
-    statusBar()->addWidget(m_statusLabel);
     
     // 初始状态
     updateConnectionStatus();
@@ -111,9 +77,9 @@ void MainWindow::onDeviceFound(const QString &udid, const QString &name)
     
     QListWidgetItem *item = new QListWidgetItem(QString("%1\n%2").arg(name, udid));
     item->setData(Qt::UserRole, udid);
-    m_deviceList->addItem(item);
+    ui->deviceList->addItem(item);
     
-    updateDisplayText(QString(), QString("找到 %1 台设备").arg(m_deviceList->count()));
+    updateDisplayText(QString(), QString("找到 %1 台设备").arg(ui->deviceList->count()));
 }
 
 void MainWindow::onDeviceLost(const QString &udid)
@@ -121,15 +87,15 @@ void MainWindow::onDeviceLost(const QString &udid)
     qDebug() << "UI: 设备断开连接" << udid;
     
     // 从列表中移除设备
-    for (int i = 0; i < m_deviceList->count(); ++i) {
-        QListWidgetItem *item = m_deviceList->item(i);
+    for (int i = 0; i < ui->deviceList->count(); ++i) {
+        QListWidgetItem *item = ui->deviceList->item(i);
         if (item && item->data(Qt::UserRole).toString() == udid) {
-            delete m_deviceList->takeItem(i);
+            delete ui->deviceList->takeItem(i);
             break;
         }
     }
     
-    updateDisplayText(QString(), QString("找到 %1 台设备").arg(m_deviceList->count()));
+    updateDisplayText(QString(), QString("找到 %1 台设备").arg(ui->deviceList->count()));
 }
 
 void MainWindow::onDeviceConnected(const QString &udid)
@@ -162,7 +128,7 @@ void MainWindow::onNoDevicesFound()
 
 void MainWindow::onDeviceSelectionChanged()
 {
-    QListWidgetItem *current = m_deviceList->currentItem();
+    QListWidgetItem *current = ui->deviceList->currentItem();
     if (current) {
         QString udid = current->data(Qt::UserRole).toString();
         if (!m_deviceManager->isConnected() ||
@@ -175,7 +141,7 @@ void MainWindow::onDeviceSelectionChanged()
 
 void MainWindow::onConnectButtonClicked()
 {
-    QListWidgetItem *current = m_deviceList->currentItem();
+    QListWidgetItem *current = ui->deviceList->currentItem();
     if (!current) {
         QMessageBox::information(this, "提示", "请先选择一台设备");
         return;
@@ -204,7 +170,7 @@ void MainWindow::onRefreshButtonClicked()
         updateDisplayText(QString(), "正在搜索 iOS 设备...");
         
         // 先清空UI列表
-        m_deviceList->clear();
+        ui->deviceList->clear();
         
         // 调用设备管理器的刷新方法
         m_deviceManager->refreshDevices();
@@ -220,7 +186,7 @@ void MainWindow::onRefreshButtonClicked()
             // 这里可以调用 getDeviceName 获取实际名称，但为了避免阻塞UI，使用简单名称
             QListWidgetItem *item = new QListWidgetItem(QString("%1\n%2").arg(deviceName, udid));
             item->setData(Qt::UserRole, udid);
-            m_deviceList->addItem(item);
+            ui->deviceList->addItem(item);
         }
         
         if (devices.isEmpty()) {
@@ -229,7 +195,7 @@ void MainWindow::onRefreshButtonClicked()
             updateDisplayText(QString(), QString("找到 %1 台设备").arg(devices.size()));
         }
     } else {
-        m_deviceList->clear();
+        ui->deviceList->clear();
         updateDisplayText(getLibraryNotInstalledInfoText(),
                          "libimobiledevice 未安装 - 无法连接 iOS 设备");
     }
@@ -237,7 +203,7 @@ void MainWindow::onRefreshButtonClicked()
 
 void MainWindow::onGetInfoButtonClicked()
 {
-    QListWidgetItem *current = m_deviceList->currentItem();
+    QListWidgetItem *current = ui->deviceList->currentItem();
     if (!current) {
         QMessageBox::information(this, "提示", "请先选择一台设备");
         return;
@@ -249,7 +215,7 @@ void MainWindow::onGetInfoButtonClicked()
 
 void MainWindow::updateDeviceInfo(const QString &udid)
 {
-    m_infoDisplay->setPlainText("正在获取设备信息...");
+    ui->infoDisplay->setPlainText("正在获取设备信息...");
     
     // 在后台线程获取设备信息
     QApplication::processEvents();
@@ -285,30 +251,30 @@ void MainWindow::updateDeviceInfo(const QString &udid)
      .arg(info.wifiAddress.isEmpty() ? "未知" : info.wifiAddress)
      .arg(info.activationState.isEmpty() ? "未知" : info.activationState)
      .arg(m_deviceManager->isConnected() ? "已连接" : "未连接")
-     .arg(LibimobiledeviceDynamic::instance().isInitialized() ? 
-          "libimobiledevice (动态加载 - 真实设备支持)" : 
+     .arg(LibimobiledeviceDynamic::instance().isInitialized() ?
+          "libimobiledevice (动态加载 - 真实设备支持)" :
           "libimobiledevice 未安装，无法连接设备");
     
-    m_infoDisplay->setPlainText(infoText);
+    ui->infoDisplay->setPlainText(infoText);
 }
 
 void MainWindow::updateConnectionStatus()
 {
-    QListWidgetItem *current = m_deviceList->currentItem();
+    QListWidgetItem *current = ui->deviceList->currentItem();
     bool hasSelection = current != nullptr;
     bool isConnected = m_deviceManager->isConnected();
     
     if (hasSelection && isConnected) {
         QString currentUdid = current->data(Qt::UserRole).toString();
         bool isCurrentDevice = (currentUdid == m_deviceManager->getCurrentDevice());
-        m_connectButton->setText(isCurrentDevice ? "断开连接" : "连接设备");
-        m_connectButton->setEnabled(true);
+        ui->connectButton->setText(isCurrentDevice ? "断开连接" : "连接设备");
+        ui->connectButton->setEnabled(true);
     } else {
-        m_connectButton->setText("连接设备");
-        m_connectButton->setEnabled(hasSelection);
+        ui->connectButton->setText("连接设备");
+        ui->connectButton->setEnabled(hasSelection);
     }
     
-    m_getInfoButton->setEnabled(hasSelection);
+    ui->getInfoButton->setEnabled(hasSelection);
 }
 
 void MainWindow::updateDisplayText(const QString &infoText,
@@ -317,12 +283,12 @@ void MainWindow::updateDisplayText(const QString &infoText,
 {
     Q_UNUSED(createStatusLabel) // 保留参数以兼容旧代码，但不再使用
     
-    if (!infoText.isEmpty() && m_infoDisplay) {
-        m_infoDisplay->setPlainText(infoText);
+    if (!infoText.isEmpty()) {
+        ui->infoDisplay->setPlainText(infoText);
     }
     
-    if (!statusText.isEmpty() && m_statusLabel) {
-        m_statusLabel->setText(statusText);
+    if (!statusText.isEmpty()) {
+        ui->statusLabel->setText(statusText);
     }
 }
 

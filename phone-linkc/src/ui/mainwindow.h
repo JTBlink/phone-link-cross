@@ -2,14 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include <QListWidget>
-#include <QPushButton>
-#include <QTextEdit>
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QSplitter>
-#include <QLabel>
-#include <QStatusBar>
+#include <QListWidgetItem>
 
 #include "core/device/devicemanager.h"
 #include "core/device/deviceinfo.h"
@@ -62,16 +55,6 @@ private:
     QString getInitialStatusText() const;
 
     Ui::MainWindow *ui;
-    
-    // UI 组件
-    QWidget *m_centralWidget;
-    QSplitter *m_mainSplitter;
-    QListWidget *m_deviceList;
-    QTextEdit *m_infoDisplay;
-    QPushButton *m_connectButton;
-    QPushButton *m_refreshButton;
-    QPushButton *m_getInfoButton;
-    QLabel *m_statusLabel;
     
     // 业务逻辑
     DeviceManager *m_deviceManager;
