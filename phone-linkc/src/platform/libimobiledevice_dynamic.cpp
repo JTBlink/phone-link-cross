@@ -25,6 +25,7 @@ LibimobiledeviceDynamic::LibimobiledeviceDynamic()
     plist_free = nullptr;
     plist_get_node_type = nullptr;
     plist_get_string_val = nullptr;
+    plist_get_string_ptr = nullptr;
     plist_get_bool_val = nullptr;
     plist_get_uint_val = nullptr;
 }
@@ -136,6 +137,7 @@ bool LibimobiledeviceDynamic::initialize()
     success &= loadFunction("plist_free", plist_free, m_plistLib);
     success &= loadFunction("plist_get_node_type", plist_get_node_type, m_plistLib);
     success &= loadFunction("plist_get_string_val", plist_get_string_val, m_plistLib);
+    success &= loadFunction("plist_get_string_ptr", plist_get_string_ptr, m_plistLib);
     success &= loadFunction("plist_get_bool_val", plist_get_bool_val, m_plistLib);
     success &= loadFunction("plist_get_uint_val", plist_get_uint_val, m_plistLib);
     
@@ -191,6 +193,7 @@ void LibimobiledeviceDynamic::cleanup()
     plist_free = nullptr;
     plist_get_node_type = nullptr;
     plist_get_string_val = nullptr;
+    plist_get_string_ptr = nullptr;
     plist_get_bool_val = nullptr;
     plist_get_uint_val = nullptr;
     

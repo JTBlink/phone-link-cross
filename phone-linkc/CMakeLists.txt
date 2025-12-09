@@ -34,8 +34,30 @@ project(phone-linkc LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 查找线程库（Windows 上会自动处理）
-find_package(Threads REQUIRED)
+# ============================================================================
+# MSVC 编译器配置（全局设置）
+# ============================================================================
+if(MSVC)
+    # Debug 模式编译选项 - 确保生成完整的调试符号 (PDB 文件)
+    # /Zi - 生成完整的调试信息 (PDB 文件)
+    # /Od - 禁用优化，便于调试
+    # /Ob0 - 禁用内联展开
+    # /RTC1 - 启用运行时错误检查
+    # /MDd - 使用多线程调试 DLL 运行时库
+    string(REPLACE "/Zi" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Zi /Od /Ob0 /RTC1 /MDd" CACHE STRING "" FORCE)
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /Zi /Od /Ob0 /RTC1 /MDd" CACHE STRING "" FORCE)
+    
+    # 链接器选项：生成调试信息
+    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} /DEBUG:FULL" CACHE STRING "" FORCE)
+    set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} /DEBUG:FULL" CACHE STRING "" FORCE)
+endif()
+
+# 查找线程库
+# Windows 上不需要 pthread，使用原生 Windows 线程 API
+if(NOT WIN32)
+    find_package(Threads REQUIRED)
+endif()
 
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Widgets Network)
 
@@ -53,25 +75,24 @@ if(PKG_CONFIG_FOUND)
     endif()
 endif()
 
-# macOS 特定处理：如果 pkg-config 没找到，尝试直接使用 Homebrew 路径
+# ============================================================================
+# macOS 特定处理：通过 Homebrew 路径查找 libimobiledevice
+# ============================================================================
 if(APPLE AND NOT LIBIMOBILEDEVICE_AVAILABLE)
     message(STATUS "尝试使用 Homebrew 路径查找 libimobiledevice...")
     
-    # 首先尝试使用环境变量中的路径
+    # 确定 Homebrew 前缀路径
     if(DEFINED ENV{HOMEBREW_PREFIX})
         set(HOMEBREW_PREFIX $ENV{HOMEBREW_PREFIX})
         message(STATUS "使用环境变量 HOMEBREW_PREFIX: ${HOMEBREW_PREFIX}")
     else()
-        # 尝试查找 Homebrew 安装的库
         execute_process(
             COMMAND brew --prefix
             OUTPUT_VARIABLE HOMEBREW_PREFIX
             OUTPUT_STRIP_TRAILING_WHITESPACE
             RESULT_VARIABLE BREW_RESULT
         )
-        if(BREW_RESULT EQUAL 0)
-            message(STATUS "使用 brew --prefix 找到路径: ${HOMEBREW_PREFIX}")
-        else()
+        if(NOT BREW_RESULT EQUAL 0)
             # ARM64 macOS 默认使用 /opt/homebrew，Intel macOS 使用 /usr/local
             if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64")
                 set(HOMEBREW_PREFIX "/opt/homebrew")
@@ -79,22 +100,24 @@ if(APPLE AND NOT LIBIMOBILEDEVICE_AVAILABLE)
                 set(HOMEBREW_PREFIX "/usr/local")
             endif()
             message(STATUS "brew 命令失败，使用默认路径: ${HOMEBREW_PREFIX}")
+        else()
+            message(STATUS "使用 brew --prefix 找到路径: ${HOMEBREW_PREFIX}")
         endif()
     endif()
     
     message(STATUS "Homebrew prefix: ${HOMEBREW_PREFIX}")
     
-    # 检查头文件和库文件是否存在
-    set(IDEVICE_HEADER_FOUND FALSE)
-    set(PLIST_HEADER_FOUND FALSE)
+    # 预先获取 Cellar 路径（避免重复调用）
+    file(GLOB IMOBILEDEVICE_CELLAR_DIRS "${HOMEBREW_PREFIX}/Cellar/libimobiledevice/*/include")
+    file(GLOB PLIST_CELLAR_DIRS "${HOMEBREW_PREFIX}/Cellar/libplist/*/include")
+    file(GLOB USBMUXD_CELLAR_DIRS "${HOMEBREW_PREFIX}/Cellar/libusbmuxd/*/include")
     
-    # 先检查标准位置
+    # 检查 libimobiledevice 头文件
+    set(IDEVICE_HEADER_FOUND FALSE)
     if(EXISTS "${HOMEBREW_PREFIX}/include/libimobiledevice/libimobiledevice.h")
         set(IDEVICE_HEADER_FOUND TRUE)
         message(STATUS "✓ libimobiledevice.h found at ${HOMEBREW_PREFIX}/include/libimobiledevice/")
     else()
-        # 查找 Cellar 位置
-        file(GLOB IMOBILEDEVICE_CELLAR_DIRS "${HOMEBREW_PREFIX}/Cellar/libimobiledevice/*/include")
         foreach(cellar_dir ${IMOBILEDEVICE_CELLAR_DIRS})
             if(EXISTS "${cellar_dir}/libimobiledevice/libimobiledevice.h")
                 set(IDEVICE_HEADER_FOUND TRUE)
@@ -105,12 +128,11 @@ if(APPLE AND NOT LIBIMOBILEDEVICE_AVAILABLE)
     endif()
     
     # 检查 plist 头文件
+    set(PLIST_HEADER_FOUND FALSE)
     if(EXISTS "${HOMEBREW_PREFIX}/include/plist/plist.h")
         set(PLIST_HEADER_FOUND TRUE)
         message(STATUS "✓ plist.h found at ${HOMEBREW_PREFIX}/include/plist/")
     else()
-        # 查找 Cellar 位置
-        file(GLOB PLIST_CELLAR_DIRS "${HOMEBREW_PREFIX}/Cellar/libplist/*/include")
         foreach(cellar_dir ${PLIST_CELLAR_DIRS})
             if(EXISTS "${cellar_dir}/plist/plist.h")
                 set(PLIST_HEADER_FOUND TRUE)
@@ -121,32 +143,15 @@ if(APPLE AND NOT LIBIMOBILEDEVICE_AVAILABLE)
     endif()
     
     if(IDEVICE_HEADER_FOUND AND PLIST_HEADER_FOUND)
-        # 设置包含目录 - 既包括标准位置也包括 Cellar 位置
-        set(IMOBILEDEVICE_INCLUDE_DIRS "${HOMEBREW_PREFIX}/include")
-        set(PLIST_INCLUDE_DIRS "${HOMEBREW_PREFIX}/include")
-        set(USBMUXD_INCLUDE_DIRS "${HOMEBREW_PREFIX}/include")
+        # 设置包含目录 - 包括标准位置和 Cellar 位置
+        set(IMOBILEDEVICE_INCLUDE_DIRS "${HOMEBREW_PREFIX}/include" ${IMOBILEDEVICE_CELLAR_DIRS})
+        set(PLIST_INCLUDE_DIRS "${HOMEBREW_PREFIX}/include" ${PLIST_CELLAR_DIRS})
+        set(USBMUXD_INCLUDE_DIRS "${HOMEBREW_PREFIX}/include" ${USBMUXD_CELLAR_DIRS})
         
-        # 如果头文件在 Cellar 中，也添加那些路径
-        file(GLOB IMOBILEDEVICE_CELLAR_DIRS "${HOMEBREW_PREFIX}/Cellar/libimobiledevice/*/include")
-        file(GLOB PLIST_CELLAR_DIRS "${HOMEBREW_PREFIX}/Cellar/libplist/*/include")
-        file(GLOB USBMUXD_CELLAR_DIRS "${HOMEBREW_PREFIX}/Cellar/libusbmuxd/*/include")
-        
-        if(IMOBILEDEVICE_CELLAR_DIRS)
-            list(APPEND IMOBILEDEVICE_INCLUDE_DIRS ${IMOBILEDEVICE_CELLAR_DIRS})
-        endif()
-        if(PLIST_CELLAR_DIRS)
-            list(APPEND PLIST_INCLUDE_DIRS ${PLIST_CELLAR_DIRS})
-        endif()
-        if(USBMUXD_CELLAR_DIRS)
-            list(APPEND USBMUXD_INCLUDE_DIRS ${USBMUXD_CELLAR_DIRS})
-        endif()
-        
-        # 设置库路径
+        # 设置库路径和编译标志
         set(IMOBILEDEVICE_LIBRARIES "-L${HOMEBREW_PREFIX}/lib -limobiledevice-1.0")
         set(PLIST_LIBRARIES "-L${HOMEBREW_PREFIX}/lib -lplist-2.0")
         set(USBMUXD_LIBRARIES "-L${HOMEBREW_PREFIX}/lib -lusbmuxd-2.0")
-        
-        # 设置编译标志
         set(IMOBILEDEVICE_CFLAGS_OTHER "-I${HOMEBREW_PREFIX}/include")
         set(PLIST_CFLAGS_OTHER "-I${HOMEBREW_PREFIX}/include")
         set(USBMUXD_CFLAGS_OTHER "-I${HOMEBREW_PREFIX}/include")
@@ -218,49 +223,48 @@ target_link_libraries(phone-linkc
         Qt::Core
         Qt::Widgets
         Qt::Network
-        Threads::Threads
+        $<$<NOT:$<PLATFORM_ID:Windows>>:Threads::Threads>
 )
 
-# MSVC 特定配置
-if(MSVC)
-    # Qt 6.10.1 要求的 MSVC 编译器选项
-    target_compile_options(phone-linkc PRIVATE 
-        /Zc:__cplusplus      # 启用正确的 C++ 标准宏
-        /permissive-         # 禁用非标准扩展，启用标准一致性
-        /utf-8               # 使用 UTF-8 编码（包含源码和执行字符集）
-        /W3                  # 警告级别
-        /Zc:lambda           # 改进的 lambda 处理
-        /std:c++17           # 明确指定 C++17 标准
-    )
-    
-    # 为了解决 Qt MOC 与 MSVC 2019 的兼容性问题和中文乱码问题
-    target_compile_definitions(phone-linkc PRIVATE
-        QT_DISABLE_DEPRECATED_UP_TO=0x060000  # 禁用过时的 API 警告
-        _ENABLE_EXTENDED_ALIGNED_STORAGE      # 启用扩展对齐存储支持
-        UNICODE                               # 启用 Unicode 支持
-        _UNICODE                              # 启用 Unicode 支持
-        WIN32_LEAN_AND_MEAN                  # 减少 Windows 头文件包含
-    )
-    
-    # 设置 Windows 子系统（GUI应用）
-    set_target_properties(phone-linkc PROPERTIES
-        WIN32_EXECUTABLE TRUE
-        CXX_STANDARD 17
-        CXX_STANDARD_REQUIRED ON
-    )
-endif()
-
-# Windows 特定的线程配置
+# ============================================================================
+# Windows/MSVC 平台配置（合并所有 Windows 相关设置）
+# ============================================================================
 if(WIN32)
-    # 在 Windows 上使用 Qt 的线程实现，不依赖 pthread
+    # Windows 通用定义
     target_compile_definitions(phone-linkc PRIVATE
         QT_THREAD_SUPPORT                    # 启用 Qt 线程支持
         _WIN32_WINNT=0x0601                  # Windows 7 及以上版本支持
     )
-endif()
-
-# Windows 特定处理：使用 DLL 动态加载方案
-if(WIN32)
+    
+    # MSVC 特定配置
+    if(MSVC)
+        # Qt 6.10.1 要求的 MSVC 编译器选项
+        target_compile_options(phone-linkc PRIVATE
+            /Zc:__cplusplus      # 启用正确的 C++ 标准宏
+            /permissive-         # 禁用非标准扩展，启用标准一致性
+            /utf-8               # 使用 UTF-8 编码（包含源码和执行字符集）
+            /W3                  # 警告级别
+            /Zc:lambda           # 改进的 lambda 处理
+        )
+        
+        # Qt MOC 与 MSVC 兼容性和中文支持
+        target_compile_definitions(phone-linkc PRIVATE
+            QT_DISABLE_DEPRECATED_UP_TO=0x060000  # 禁用过时的 API 警告
+            _ENABLE_EXTENDED_ALIGNED_STORAGE      # 启用扩展对齐存储支持
+            UNICODE                               # 启用 Unicode 支持
+            _UNICODE                              # 启用 Unicode 支持
+            WIN32_LEAN_AND_MEAN                   # 减少 Windows 头文件包含
+        )
+        
+        # 设置 Windows 子系统（GUI应用）
+        set_target_properties(phone-linkc PROPERTIES
+            WIN32_EXECUTABLE TRUE
+        )
+    endif()
+    
+    # -------------------------------------------------------------------------
+    # libimobiledevice DLL 动态加载方案
+    # -------------------------------------------------------------------------
     # 检查是否存在 thirdparty DLL 文件
     set(THIRDPARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libimobiledevice")
     
@@ -306,7 +310,7 @@ if(WIN32)
         set(LIBIMOBILEDEVICE_AVAILABLE FALSE)
         set(USE_DYNAMIC_LOADING FALSE)
     endif()
-endif()
+endif()  # END if(WIN32)
 
 # 如果找到 libimobiledevice，则启用相关功能（非Windows或macOS）
 if(LIBIMOBILEDEVICE_AVAILABLE AND NOT WIN32)

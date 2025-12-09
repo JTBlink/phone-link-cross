@@ -61,6 +61,21 @@ typedef plist_type (*plist_get_node_type_func)(plist_t node);
 typedef void (*plist_get_string_val_func)(plist_t node, char **val);
 
 /**
+ * Get a pointer to the buffer of a #PLIST_STRING node.
+ *
+ * @note DO NOT MODIFY the buffer. Mind that the buffer is only available
+ *   until the plist node gets freed. Make a copy if needed.
+ *
+ * @param node The node
+ * @param length If non-NULL, will be set to the length of the string
+ *
+ * @return Pointer to the NULL-terminated buffer.
+ *
+ * @原型 const char* plist_get_string_ptr(plist_t node, uint64_t* length);
+ */
+typedef const char* (*plist_get_string_ptr_func)(plist_t node, uint64_t* length);
+
+/**
  * Get the value of a #PLIST_BOOLEAN node.
  * This function does nothing if node is not of type #PLIST_BOOLEAN
  *

@@ -230,13 +230,13 @@ QString DeviceManager::getDeviceName(const QString &udid)
             if (loader.lockdownd_get_value && 
                 loader.lockdownd_get_value(lockdown, nullptr, "DeviceName", &value) == LOCKDOWN_E_SUCCESS) {
                 if (value && loader.plist_get_node_type && loader.plist_get_node_type(value) == PLIST_STRING) {
-                    char *str_value = nullptr;
-                    if (loader.plist_get_string_val) {
-                        loader.plist_get_string_val(value, &str_value);
-                        if (str_value) {
-                            name = QString::fromUtf8(str_value);
-                            // 不要调用 free()，因为 plist_get_string_val 分配的内存
-                            // 会在 plist_free() 时一起释放
+                    // 使用 plist_get_string_ptr 获取字符串指针，无需手动释放内存
+                    // 该指针在 plist_free(value) 调用前有效
+                    if (loader.plist_get_string_ptr) {
+                        uint64_t length = 0;
+                        const char* str_ptr = loader.plist_get_string_ptr(value, &length);
+                        if (str_ptr) {
+                            name = QString::fromUtf8(str_ptr, static_cast<int>(length));
                         }
                     }
                 }

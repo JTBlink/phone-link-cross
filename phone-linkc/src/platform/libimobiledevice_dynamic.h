@@ -254,7 +254,8 @@ public:
     
     plist_free_func plist_free;                       ///< 释放 plist 节点
     plist_get_node_type_func plist_get_node_type;     ///< 获取节点类型
-    plist_get_string_val_func plist_get_string_val;   ///< 获取字符串值
+    plist_get_string_val_func plist_get_string_val;   ///< 获取字符串值（需手动释放，慎用）
+    plist_get_string_ptr_func plist_get_string_ptr;   ///< 获取字符串指针（无需释放，推荐）
     plist_get_bool_val_func plist_get_bool_val;       ///< 获取布尔值
     plist_get_uint_val_func plist_get_uint_val;       ///< 获取整数值
     

@@ -31,7 +31,6 @@ private slots:
     void onDeviceSelectionChanged();
     void onConnectButtonClicked();
     void onRefreshButtonClicked();
-    void onGetInfoButtonClicked();
 
 private:
     void setupUI();

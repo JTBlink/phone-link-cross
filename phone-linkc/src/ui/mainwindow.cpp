@@ -54,8 +54,6 @@ void MainWindow::setupUI()
             this, &MainWindow::onConnectButtonClicked);
     connect(ui->refreshButton, &QPushButton::clicked,
             this, &MainWindow::onRefreshButtonClicked);
-    connect(ui->getInfoButton, &QPushButton::clicked,
-            this, &MainWindow::onGetInfoButtonClicked);
     
     // 设置分割器拉伸因子
     ui->mainSplitter->setStretchFactor(0, 1);
@@ -133,7 +131,7 @@ void MainWindow::onDeviceSelectionChanged()
         QString udid = current->data(Qt::UserRole).toString();
         if (!m_deviceManager->isConnected() ||
             m_deviceManager->getCurrentDevice() != udid) {
-            updateDisplayText(QString("选中设备: %1\n点击 '连接设备' 或 '获取信息' 按钮").arg(udid));
+            updateDisplayText(QString("选中设备: %1\n点击 '连接设备' 按钮获取详细信息").arg(udid));
         }
     }
     updateConnectionStatus();
@@ -201,18 +199,6 @@ void MainWindow::onRefreshButtonClicked()
     }
 }
 
-void MainWindow::onGetInfoButtonClicked()
-{
-    QListWidgetItem *current = ui->deviceList->currentItem();
-    if (!current) {
-        QMessageBox::information(this, "提示", "请先选择一台设备");
-        return;
-    }
-    
-    QString udid = current->data(Qt::UserRole).toString();
-    updateDeviceInfo(udid);
-}
-
 void MainWindow::updateDeviceInfo(const QString &udid)
 {
     ui->infoDisplay->setPlainText("正在获取设备信息...");
@@ -222,40 +208,8 @@ void MainWindow::updateDeviceInfo(const QString &udid)
     
     DeviceInfo info = m_infoManager->getDeviceInfo(udid);
     
-    QString infoText = QString(
-        "========== iOS 设备信息 ==========\n\n"
-        "设备名称: %1\n"
-        "UDID: %2\n"
-        "型号: %3\n"
-        "系统版本: %4 (%5)\n"
-        "序列号: %6\n"
-        "设备类型: %7\n"
-        "产品类型: %8\n"
-        "总容量: %9 GB\n"
-        "可用容量: %10 GB\n"
-        "WiFi地址: %11\n"
-        "激活状态: %12\n\n"
-        "========== libimobiledevice 状态 ==========\n"
-        "连接状态: %13\n"
-        "支持库: %14"
-    ).arg(info.name.isEmpty() ? "未知" : info.name)
-     .arg(info.udid)
-     .arg(info.model.isEmpty() ? "未知" : info.model)
-     .arg(info.productVersion.isEmpty() ? "未知" : info.productVersion)
-     .arg(info.buildVersion.isEmpty() ? "未知" : info.buildVersion)
-     .arg(info.serialNumber.isEmpty() ? "未知" : info.serialNumber)
-     .arg(info.deviceClass.isEmpty() ? "未知" : info.deviceClass)
-     .arg(info.productType.isEmpty() ? "未知" : info.productType)
-     .arg(info.totalCapacity > 0 ? QString::number(info.totalCapacity / (1024*1024*1024)) : "未知")
-     .arg(info.availableCapacity > 0 ? QString::number(info.availableCapacity / (1024*1024*1024)) : "未知")
-     .arg(info.wifiAddress.isEmpty() ? "未知" : info.wifiAddress)
-     .arg(info.activationState.isEmpty() ? "未知" : info.activationState)
-     .arg(m_deviceManager->isConnected() ? "已连接" : "未连接")
-     .arg(LibimobiledeviceDynamic::instance().isInitialized() ?
-          "libimobiledevice (动态加载 - 真实设备支持)" :
-          "libimobiledevice 未安装，无法连接设备");
-    
-    ui->infoDisplay->setPlainText(infoText);
+    // 直接使用 DeviceInfo::toString() 方法获取格式化的设备信息
+    ui->infoDisplay->setPlainText(info.toString());
 }
 
 void MainWindow::updateConnectionStatus()
@@ -274,7 +228,6 @@ void MainWindow::updateConnectionStatus()
         ui->connectButton->setEnabled(hasSelection);
     }
     
-    ui->getInfoButton->setEnabled(hasSelection);
 }
 
 void MainWindow::updateDisplayText(const QString &infoText,
