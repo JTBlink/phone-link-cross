@@ -195,6 +195,9 @@ set(SOURCES
     ${SRC_DIR}/ui/photopage.cpp
     ${SRC_DIR}/ui/photopage.h
     ${SRC_DIR}/ui/photopage.ui
+    ${SRC_DIR}/ui/filepage.cpp
+    ${SRC_DIR}/ui/filepage.h
+    ${SRC_DIR}/ui/filepage.ui
     ${SRC_DIR}/ui/flowlayout.cpp
     ${SRC_DIR}/ui/flowlayout.h
     
@@ -207,6 +210,10 @@ set(SOURCES
     # Core - Photo Management
     ${SRC_DIR}/core/photo/photomanager.cpp
     ${SRC_DIR}/core/photo/photomanager.h
+
+    # Core - File Management
+    ${SRC_DIR}/core/file/filemanager.cpp
+    ${SRC_DIR}/core/file/filemanager.h
     
     # Platform Layer
     ${SRC_DIR}/platform/libimobiledevice_dynamic.cpp
@@ -228,6 +235,7 @@ target_include_directories(phone-linkc PRIVATE
     ${SRC_DIR}/core
     ${SRC_DIR}/core/device
     ${SRC_DIR}/core/photo
+    ${SRC_DIR}/core/file
     ${SRC_DIR}/platform
 )
 

@@ -275,6 +275,10 @@ public:
     afc_file_open_func afc_file_open;                     ///< 打开文件
     afc_file_close_func afc_file_close;                   ///< 关闭文件
     afc_file_read_func afc_file_read;                     ///< 读取文件
+    afc_file_write_func afc_file_write;                   ///< 写入文件
+    afc_make_directory_func afc_make_directory;           ///< 创建目录
+    afc_remove_path_func afc_remove_path;                 ///< 删除路径
+    afc_rename_path_func afc_rename_path;                 ///< 重命名路径
     afc_dictionary_free_func afc_dictionary_free;         ///< 释放字典
     
     /* ========================================================================

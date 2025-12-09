@@ -41,6 +41,10 @@ LibimobiledeviceDynamic::LibimobiledeviceDynamic()
     afc_file_open = nullptr;
     afc_file_close = nullptr;
     afc_file_read = nullptr;
+    afc_file_write = nullptr;
+    afc_make_directory = nullptr;
+    afc_remove_path = nullptr;
+    afc_rename_path = nullptr;
     afc_dictionary_free = nullptr;
 }
 
@@ -159,6 +163,10 @@ bool LibimobiledeviceDynamic::initialize()
     success &= loadFunction("afc_file_open", afc_file_open, m_imobiledeviceLib);
     success &= loadFunction("afc_file_close", afc_file_close, m_imobiledeviceLib);
     success &= loadFunction("afc_file_read", afc_file_read, m_imobiledeviceLib);
+    success &= loadFunction("afc_file_write", afc_file_write, m_imobiledeviceLib);
+    success &= loadFunction("afc_make_directory", afc_make_directory, m_imobiledeviceLib);
+    success &= loadFunction("afc_remove_path", afc_remove_path, m_imobiledeviceLib);
+    success &= loadFunction("afc_rename_path", afc_rename_path, m_imobiledeviceLib);
     success &= loadFunction("afc_dictionary_free", afc_dictionary_free, m_imobiledeviceLib);
     
     // 加载plist函数
@@ -237,6 +245,10 @@ void LibimobiledeviceDynamic::cleanup()
     afc_file_open = nullptr;
     afc_file_close = nullptr;
     afc_file_read = nullptr;
+    afc_file_write = nullptr;
+    afc_make_directory = nullptr;
+    afc_remove_path = nullptr;
+    afc_rename_path = nullptr;
     afc_dictionary_free = nullptr;
     
     m_initialized = false;

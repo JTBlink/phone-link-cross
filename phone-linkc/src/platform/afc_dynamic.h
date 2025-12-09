@@ -71,6 +71,30 @@ typedef afc_error_t (*afc_file_close_func)(afc_client_t client, uint64_t handle)
 typedef afc_error_t (*afc_file_read_func)(afc_client_t client, uint64_t handle, char *data, uint32_t length, uint32_t *bytes_read);
 
 /**
+ * 写入文件内容
+ * @原型 afc_error_t afc_file_write(afc_client_t client, uint64_t handle, const char *data, uint32_t length, uint32_t *bytes_written);
+ */
+typedef afc_error_t (*afc_file_write_func)(afc_client_t client, uint64_t handle, const char *data, uint32_t length, uint32_t *bytes_written);
+
+/**
+ * 创建目录
+ * @原型 afc_error_t afc_make_directory(afc_client_t client, const char *path);
+ */
+typedef afc_error_t (*afc_make_directory_func)(afc_client_t client, const char *path);
+
+/**
+ * 删除文件或目录
+ * @原型 afc_error_t afc_remove_path(afc_client_t client, const char *path);
+ */
+typedef afc_error_t (*afc_remove_path_func)(afc_client_t client, const char *path);
+
+/**
+ * 重命名路径
+ * @原型 afc_error_t afc_rename_path(afc_client_t client, const char *from, const char *to);
+ */
+typedef afc_error_t (*afc_rename_path_func)(afc_client_t client, const char *from, const char *to);
+
+/**
  * 释放字典
  * @原型 afc_error_t afc_dictionary_free(char **dictionary);
  */

@@ -434,19 +434,13 @@ QPushButton:disabled {
            </item>
           </layout>
          </widget>
-         <widget class="QWidget" name="filePage">
-          <layout class="QVBoxLayout" name="filePageLayout">
-           <item>
-            <widget class="QLabel" name="filePlaceholder">
-             <property name="text">
-              <string>文件管理功能开发中...</string>
-             </property>
-             <property name="alignment">
-              <set>Qt::AlignCenter</set>
-             </property>
-            </widget>
-           </item>
-          </layout>
+         <widget class="FilePage" name="filePage" native="true">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
          </widget>
          <widget class="QWidget" name="morePage">
           <layout class="QVBoxLayout" name="morePageLayout">
@@ -507,6 +501,12 @@ QPushButton:disabled {
    <class>PhotoPage</class>
    <extends>QWidget</extends>
    <header>ui/photopage.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>FilePage</class>
+   <extends>QWidget</extends>
+   <header>ui/filepage.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

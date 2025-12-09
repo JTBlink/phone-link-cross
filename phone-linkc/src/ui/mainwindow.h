@@ -6,6 +6,7 @@
 #include "core/device/devicemanager.h"
 #include "core/device/deviceinfo.h"
 #include "core/photo/photomanager.h"
+#include "core/file/filemanager.h"
 
 class DebugWindow;
 class DeviceConnectDialog;
@@ -60,6 +61,7 @@ private:
     DeviceManager *m_deviceManager;
     DeviceInfoManager *m_infoManager;
     PhotoManager *m_photoManager;
+    FileManager *m_fileManager;
     
     // 当前连接的设备名称
     QString m_connectedDeviceName;

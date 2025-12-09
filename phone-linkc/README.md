@@ -15,6 +15,10 @@
     - 📁 **相册浏览**: 树形结构查看设备上的相册（/DCIM）
     - 🖼️ **照片预览**: 异步加载照片缩略图，流畅的滚动体验
     - 💾 **照片导出**: 支持导出照片到本地（开发中）
+- ✅ **文件管理**:
+    - 📂 **目录浏览**: 树形结构访问设备文件系统
+    - 📄 **文件操作**: 支持创建文件夹、删除文件/目录、导出文件
+    - 🔄 **实时刷新**: 动态更新文件列表
 - ✅ **用户友好界面**: 现代化 Qt 图形界面，自适应 FlowLayout 布局
 - ✅ **动态库加载**: Windows 平台智能加载 DLL，无需静态链接，增强兼容性
 - ✅ **模拟模式**: 无需真实设备即可测试（开发友好）
@@ -72,21 +76,198 @@
 -   **缩略图生成**:
     -   目前通过读取原始照片文件 (`readPhotoData`) 并使用 `QImage` 进行解码和缩放生成缩略图。
     -   **异步队列**: 实现了 `startThumbnailLoading` 和 `loadNextThumbnail`，防止一次性加载大量图片导致界面卡死。
--   **HEIC 支持**: 依赖 Qt 的 Imageformats 插件。如果系统缺失 HEIC 解码器，缩略图可能无法正常显示（显示为灰色占位符）。
+-   **HEIC 支持**: 依赖 Qt 的 Imageformats 插件。如果系统缺失 HEIC 解码器,缩略图可能无法正常显示（显示为灰色占位符）。
 
-### 已知问题与限制
+##### 已知限制
 
-1.  **HEIC 格式支持**: 
+1.  **HEIC 格式支持**:
     -   iPhone 拍摄的照片默认为 HEIC 格式。
     -   Windows 上的 Qt 默认可能不支持 HEIC 解码，导致缩略图显示失败。
     -   **解决方案**: 需要安装 Qt 的 HEIF 插件或将 HEIF 解码库集成到项目中。
 2.  **大文件读取性能**:
     -   目前生成缩略图是读取整个原始图片文件。对于高清照片或视频，即使在异步队列中读取，也可能产生轻微的 IO 延迟。
     -   **优化方向**: 尝试读取文件头部元数据中的缩略图（如果存在），或集成更高效的缩略图生成库。
-3.  **视频预览**: 
+3.  **视频预览**:
     -   目前视频文件仅显示占位符，不支持预览播放。
-4.  **相册名称**: 
-    -   显示的相册名称为文件系统目录名（如 `100APPLE`），而非 iOS 相册应用中显示的逻辑相册名（如“最近项目”、“收藏”）。这是由于 AFC 协议限制，无法直接访问 Photos 数据库。
+4.  **相册名称**:
+    -   显示的相册名称为文件系统目录名（如 `100APPLE`），而非 iOS 相册应用中显示的逻辑相册名（如"最近项目"、"收藏"）。这是由于 AFC 协议限制，无法直接访问 Photos 数据库。
+
+#### 4. 文件管理实现细节
+
+文件管理功能基于 AFC (Apple File Conduit) 协议实现。
+
+**核心 AFC API**
+
+| 功能 | API | 说明 |
+|------|-----|------|
+| 建立连接 | `lockdownd_start_service("com.apple.afc")` + `afc_client_new()` | 启动 AFC 服务并创建客户端 |
+| 浏览目录 | `afc_read_directory()` + `afc_get_file_info()` | 获取目录列表和文件信息 |
+| 创建目录 | `afc_make_directory()` | 创建单层目录 |
+| 删除 | `afc_remove_path()` | 删除文件或空目录 |
+| 重命名 | `afc_rename_path()` | 文件/目录重命名 |
+| 读取文件 | `afc_file_open()` + `afc_file_read()` + `afc_file_close()` | 流式读取文件 |
+| 写入文件 | `afc_file_open()` + `afc_file_write()` + `afc_file_close()` | 流式写入文件 |
+
+##### 已知限制
+
+1.  **文件导入功能**:
+    -   目前导入功能的 UI 已就绪，但实际的文件上传逻辑尚未实现。
+    -   **实现计划**: 需要实现 `FileManager::writeFile()` 的完整逻辑，包括文件打开、写入和关闭。
+2.  **目录递归删除**:
+    -   `afc_remove_path` 只能删除空目录或单个文件。
+    -   对于非空目录，需要实现递归删除逻辑。
+3.  **大文件传输性能**:
+    -   当前实现一次性读取整个文件到内存，对于大文件可能导致内存占用过高。
+    -   **优化方向**: 实现分块传输机制，使用缓冲区进行流式读写。
+4.  **访问权限限制**:
+    -   AFC 服务默认只能访问应用沙盒目录，无法访问系统目录或其他应用的数据。
+    -   某些目录（如系统根目录）可能返回权限错误。
+
+### 常见编译问题与解决方案
+
+在实现文件管理功能的过程中，可能遇到以下编译错误：
+
+#### 1. AFC 函数未定义错误
+
+**错误信息:**
+```
+error: 'afc_make_directory' is not a member of 'LibimobiledeviceDynamic'
+error: 'afc_remove_path' is not a member of 'LibimobiledeviceDynamic'
+error: 'afc_rename_path' is not a member of 'LibimobiledeviceDynamic'
+```
+
+**原因:** 这些 AFC 函数指针未在 `LibimobiledeviceDynamic` 类中定义。
+
+**解决方案:**
+
+1. 在 `src/platform/afc_dynamic.h` 中添加函数指针类型定义：
+```cpp
+// 目录操作
+typedef afc_error_t (*afc_make_directory_func)(afc_client_t client, const char *path);
+typedef afc_error_t (*afc_remove_path_func)(afc_client_t client, const char *path);
+typedef afc_error_t (*afc_rename_path_func)(afc_client_t client, const char *from, const char *to);
+
+// 文件写入
+typedef afc_error_t (*afc_file_write_func)(afc_client_t client, uint64_t handle,
+                                           const char *data, uint32_t length, uint32_t *bytes_written);
+```
+
+2. 在 `src/platform/libimobiledevice_dynamic.h` 中添加成员变量：
+```cpp
+class LibimobiledeviceDynamic {
+public:
+    // ... 现有成员 ...
+    
+    // AFC 文件操作函数
+    afc_make_directory_func afc_make_directory;
+    afc_remove_path_func afc_remove_path;
+    afc_rename_path_func afc_rename_path;
+    afc_file_write_func afc_file_write;
+};
+```
+
+3. 在 `src/platform/libimobiledevice_dynamic.cpp` 的 `initialize()` 方法中加载函数：
+```cpp
+bool LibimobiledeviceDynamic::initialize() {
+    // ... 现有代码 ...
+    
+    // 加载 AFC 扩展函数
+    afc_make_directory = resolve<afc_make_directory_func>("afc_make_directory");
+    afc_remove_path = resolve<afc_remove_path_func>("afc_remove_path");
+    afc_rename_path = resolve<afc_rename_path_func>("afc_rename_path");
+    afc_file_write = resolve<afc_file_write_func>("afc_file_write");
+    
+    return true;
+}
+```
+
+4. 在构造函数中初始化为 nullptr：
+```cpp
+LibimobiledeviceDynamic::LibimobiledeviceDynamic()
+    : afc_make_directory(nullptr)
+    , afc_remove_path(nullptr)
+    , afc_rename_path(nullptr)
+    , afc_file_write(nullptr)
+{
+    // ... 现有代码 ...
+}
+```
+
+#### 2. 方法名不匹配错误
+
+**错误信息:**
+```
+error: 'class FileManager' has no member named 'disconnectFromDevice'
+```
+
+**原因:** 方法名在头文件和实现文件中不一致。
+
+**解决方案:** 确保方法名在以下位置保持一致：
+- `src/core/file/filemanager.h` - 方法声明
+- `src/core/file/filemanager.cpp` - 方法实现
+- `src/ui/mainwindow.cpp` - 方法调用
+
+正确的命名应为 `disconnectFromDevice()` 而非 `disconnect()`。
+
+#### 3. MOC 文件生成问题
+
+**症状:** 编译时提示找不到 moc 文件或信号槽连接失败。
+
+**解决方案:**
+
+1. 确保类声明中包含 `Q_OBJECT` 宏：
+```cpp
+class FilePage : public QWidget
+{
+    Q_OBJECT  // 必须添加这一行
+    
+public:
+    // ...
+};
+```
+
+2. 确保源文件已在 `CMakeLists.txt` 中正确注册：
+```cmake
+qt_add_executable(phone-linkc
+    # ... 现有文件 ...
+    src/core/file/filemanager.h
+    src/core/file/filemanager.cpp
+    src/ui/filepage.h
+    src/ui/filepage.cpp
+    src/ui/filepage.ui
+)
+```
+
+3. 清理构建目录并重新构建：
+```bash
+rm -rf build/
+mkdir build && cd build
+cmake ..
+cmake --build .
+```
+
+#### 4. 头文件包含问题
+
+**错误信息:**
+```
+error: 'FileManager' was not declared in this scope
+error: incomplete type 'FileManager' used in nested name specifier
+```
+
+**解决方案:** 检查头文件包含顺序和前向声明：
+
+```cpp
+// mainwindow.h
+#include "core/file/filemanager.h"  // 完整包含，不要只用前向声明
+
+class MainWindow : public QMainWindow
+{
+    Q_OBJECT
+    
+private:
+    FileManager* m_fileManager;  // 现在可以正常使用
+};
+```
 
 ## 快速开始
 
@@ -212,10 +393,17 @@ phone-linkc/
 ├── src/
 │   ├── core/              # 核心业务逻辑
 │   │   ├── device/        # 设备管理
-│   │   └── photo/         # 照片管理
+│   │   ├── photo/         # 照片管理
+│   │   └── file/          # 文件管理
+│   │       ├── filemanager.h/cpp  # 文件系统操作封装
 │   ├── platform/          # 平台相关 (动态库加载)
+│   │   ├── libimobiledevice_dynamic.h/cpp  # 动态库加载器
+│   │   ├── afc_dynamic.h  # AFC 函数指针定义
+│   │   ├── plist_dynamic.h  # Plist 函数指针定义
+│   │   └── lockdown_dynamic.h  # Lockdown 函数指针定义
 │   └── ui/                # 用户界面
 │       ├── photopage.*    # 照片页面与缩略图实现
+│       ├── filepage.*     # 文件管理页面实现
 │       ├── flowlayout.*   # 流式布局实现
 │       └── ...
 └── phone-linkc_zh_CN.ts   # 中文本地化
