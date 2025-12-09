@@ -29,6 +29,7 @@ private slots:
     void onDeviceError(const QString &error);
     void onConnectButtonClicked();
     void onDisconnectButtonClicked();
+    void onMenuItemSelected(int index);
     void onOpenDebugWindow();
 
 private:

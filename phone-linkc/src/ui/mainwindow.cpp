@@ -49,15 +49,18 @@ void MainWindow::setupUI()
     connect(ui->actionOpenDebugWindow, &QAction::triggered,
             this, &MainWindow::onOpenDebugWindow);
     
-    // 设置分割器拉伸因子
-    ui->mainSplitter->setStretchFactor(0, 1);
-    ui->mainSplitter->setStretchFactor(1, 2);
+    // 连接菜单列表选择信号
+    connect(ui->menuList, &QListWidget::currentRowChanged,
+            this, &MainWindow::onMenuItemSelected);
     
     // 将状态标签添加到状态栏
     statusBar()->addWidget(ui->statusLabel);
     
     // 初始化状态标签并根据运行时动态库加载状态设置初始文本
     updateDisplayText(getInitialInfoText(), getInitialStatusText());
+    
+    // 默认选中第一项（设备信息）
+    ui->menuList->setCurrentRow(0);
     
     // 初始状态
     updateConnectionStatus();
@@ -72,6 +75,7 @@ void MainWindow::onDeviceConnected(const QString &udid)
     }
     
     ui->deviceNameLabel->setText(m_connectedDeviceName);
+    ui->deviceTypeLabel->setText("已连接");
     updateDisplayText(QString(), QString("已连接到设备: %1").arg(m_connectedDeviceName));
     updateConnectionStatus();
     updateDeviceInfo(udid);
@@ -82,6 +86,7 @@ void MainWindow::onDeviceDisconnected()
     qDebug() << "UI: 设备已断开连接";
     m_connectedDeviceName.clear();
     ui->deviceNameLabel->setText("未连接设备");
+    ui->deviceTypeLabel->setText("点击连接设备");
     updateDisplayText("设备已断开连接\n\n点击【连接设备】按钮连接新设备", "设备已断开连接");
     updateConnectionStatus();
 }
@@ -136,10 +141,23 @@ void MainWindow::updateConnectionStatus()
     ui->connectButton->setEnabled(!isConnected);
     ui->disconnectButton->setEnabled(isConnected);
     
-    // 更新管理功能按钮状态
-    ui->appManageButton->setEnabled(isConnected);
-    ui->fileManageButton->setEnabled(isConnected);
-    ui->photoManageButton->setEnabled(isConnected);
+    // 更新菜单列表项状态（除了设备信息和更多，其他项需要设备连接才能使用）
+    for (int i = 1; i < ui->menuList->count() - 1; ++i) {
+        QListWidgetItem* item = ui->menuList->item(i);
+        if (item) {
+            item->setFlags(isConnected ?
+                (Qt::ItemIsEnabled | Qt::ItemIsSelectable) :
+                Qt::NoItemFlags);
+        }
+    }
+}
+
+void MainWindow::onMenuItemSelected(int index)
+{
+    // 切换到对应的页面
+    if (index >= 0 && index < ui->contentStack->count()) {
+        ui->contentStack->setCurrentIndex(index);
+    }
 }
 
 void MainWindow::updateDisplayText(const QString &infoText,

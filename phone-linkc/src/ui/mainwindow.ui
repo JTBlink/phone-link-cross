@@ -6,131 +6,471 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>800</width>
-    <height>600</height>
+    <width>1000</width>
+    <height>650</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>iOS 设备管理器 - libimobiledevice 示例</string>
+   <string>iOS 设备管理器</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="mainLayout">
+   <layout class="QHBoxLayout" name="mainLayout">
+    <property name="spacing">
+     <number>0</number>
+    </property>
+    <property name="leftMargin">
+     <number>0</number>
+    </property>
+    <property name="topMargin">
+     <number>0</number>
+    </property>
+    <property name="rightMargin">
+     <number>0</number>
+    </property>
+    <property name="bottomMargin">
+     <number>0</number>
+    </property>
     <item>
-     <widget class="QSplitter" name="mainSplitter">
-      <property name="orientation">
-       <enum>Qt::Horizontal</enum>
+     <widget class="QFrame" name="sidebarFrame">
+      <property name="minimumSize">
+       <size>
+        <width>180</width>
+        <height>0</height>
+       </size>
       </property>
-      <widget class="QWidget" name="leftWidget" native="true">
-       <layout class="QVBoxLayout" name="leftLayout">
-        <item>
-         <widget class="QGroupBox" name="deviceGroup">
-          <property name="title">
-           <string>设备连接</string>
+      <property name="maximumSize">
+       <size>
+        <width>200</width>
+        <height>16777215</height>
+       </size>
+      </property>
+      <property name="styleSheet">
+       <string>QFrame#sidebarFrame {
+    background-color: #f5f5f5;
+    border-right: 1px solid #e0e0e0;
+}</string>
+      </property>
+      <property name="frameShape">
+       <enum>QFrame::NoFrame</enum>
+      </property>
+      <layout class="QVBoxLayout" name="sidebarLayout">
+       <property name="spacing">
+        <number>0</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QFrame" name="deviceInfoFrame">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>80</height>
+          </size>
+         </property>
+         <property name="styleSheet">
+          <string>QFrame#deviceInfoFrame {
+    background-color: #ffffff;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 10px;
+}</string>
+         </property>
+         <property name="frameShape">
+          <enum>QFrame::NoFrame</enum>
+         </property>
+         <layout class="QVBoxLayout" name="deviceInfoLayout">
+          <property name="spacing">
+           <number>4</number>
           </property>
-          <layout class="QVBoxLayout" name="deviceLayout">
+          <property name="leftMargin">
+           <number>12</number>
+          </property>
+          <property name="topMargin">
+           <number>12</number>
+          </property>
+          <property name="rightMargin">
+           <number>12</number>
+          </property>
+          <property name="bottomMargin">
+           <number>12</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="deviceNameLabel">
+            <property name="text">
+             <string>未连接设备</string>
+            </property>
+            <property name="font">
+             <font>
+              <pointsize>12</pointsize>
+              <weight>75</weight>
+              <bold>true</bold>
+             </font>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="deviceTypeLabel">
+            <property name="text">
+             <string>点击连接设备</string>
+            </property>
+            <property name="font">
+             <font>
+              <pointsize>9</pointsize>
+             </font>
+            </property>
+            <property name="styleSheet">
+             <string>color: #666666;</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QListWidget" name="menuList">
+         <property name="styleSheet">
+          <string>QListWidget {
+    background-color: transparent;
+    border: none;
+    outline: none;
+}
+QListWidget::item {
+    padding: 12px 16px;
+    border: none;
+}
+QListWidget::item:selected {
+    background-color: #e3f2fd;
+    color: #1976d2;
+    border-left: 3px solid #1976d2;
+}
+QListWidget::item:hover:!selected {
+    background-color: #eeeeee;
+}</string>
+         </property>
+         <property name="verticalScrollBarPolicy">
+          <enum>Qt::ScrollBarAsNeeded</enum>
+         </property>
+         <property name="horizontalScrollBarPolicy">
+          <enum>Qt::ScrollBarAlwaysOff</enum>
+         </property>
+         <item>
+          <property name="text">
+           <string>📱 设备信息</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>📷 照片</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>📦 应用</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>👥 通讯录</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>🎬 视频</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>🎵 音乐</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>🔔 铃声</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>💾 文件管理</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>⚙️ 更多</string>
+          </property>
+         </item>
+        </widget>
+       </item>
+       <item>
+        <widget class="QFrame" name="connectButtonFrame">
+         <property name="styleSheet">
+          <string>QFrame#connectButtonFrame {
+    background-color: #ffffff;
+    border-top: 1px solid #e0e0e0;
+}</string>
+         </property>
+         <property name="frameShape">
+          <enum>QFrame::NoFrame</enum>
+         </property>
+         <layout class="QVBoxLayout" name="connectButtonLayout">
+          <property name="leftMargin">
+           <number>12</number>
+          </property>
+          <property name="topMargin">
+           <number>12</number>
+          </property>
+          <property name="rightMargin">
+           <number>12</number>
+          </property>
+          <property name="bottomMargin">
+           <number>12</number>
+          </property>
+          <item>
+           <widget class="QPushButton" name="connectButton">
+            <property name="text">
+             <string>连接设备</string>
+            </property>
+            <property name="styleSheet">
+             <string>QPushButton {
+    background-color: #1976d2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-weight: bold;
+}
+QPushButton:hover {
+    background-color: #1565c0;
+}
+QPushButton:pressed {
+    background-color: #0d47a1;
+}
+QPushButton:disabled {
+    background-color: #bdbdbd;
+}</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="disconnectButton">
+            <property name="text">
+             <string>断开连接</string>
+            </property>
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="styleSheet">
+             <string>QPushButton {
+    background-color: #f5f5f5;
+    color: #333333;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 8px 16px;
+}
+QPushButton:hover {
+    background-color: #eeeeee;
+}
+QPushButton:pressed {
+    background-color: #e0e0e0;
+}
+QPushButton:disabled {
+    background-color: #f5f5f5;
+    color: #bdbdbd;
+}</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <widget class="QFrame" name="contentFrame">
+      <property name="styleSheet">
+       <string>QFrame#contentFrame {
+    background-color: #ffffff;
+}</string>
+      </property>
+      <property name="frameShape">
+       <enum>QFrame::NoFrame</enum>
+      </property>
+      <layout class="QVBoxLayout" name="contentLayout">
+       <property name="spacing">
+        <number>0</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QStackedWidget" name="contentStack">
+         <property name="currentIndex">
+          <number>0</number>
+         </property>
+         <widget class="QWidget" name="deviceInfoPage">
+          <layout class="QVBoxLayout" name="deviceInfoPageLayout">
+           <property name="leftMargin">
+            <number>20</number>
+           </property>
+           <property name="topMargin">
+            <number>20</number>
+           </property>
+           <property name="rightMargin">
+            <number>20</number>
+           </property>
+           <property name="bottomMargin">
+            <number>20</number>
+           </property>
            <item>
-            <widget class="QLabel" name="deviceNameLabel">
-             <property name="text">
-              <string>未连接设备</string>
+            <widget class="QTextEdit" name="infoDisplay">
+             <property name="readOnly">
+              <bool>true</bool>
              </property>
-             <property name="font">
-              <font>
-               <pointsize>11</pointsize>
-               <weight>75</weight>
-               <bold>true</bold>
-              </font>
+             <property name="styleSheet">
+              <string>QTextEdit {
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 10px;
+    font-family: "Consolas", "Monaco", monospace;
+}</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="photoPage">
+          <layout class="QVBoxLayout" name="photoPageLayout">
+           <item>
+            <widget class="QLabel" name="photoPlaceholder">
+             <property name="text">
+              <string>照片管理功能开发中...</string>
              </property>
              <property name="alignment">
               <set>Qt::AlignCenter</set>
              </property>
-             <property name="wordWrap">
-              <bool>true</bool>
-             </property>
             </widget>
-           </item>
-           <item>
-            <layout class="QHBoxLayout" name="connectButtonLayout">
-             <item>
-              <widget class="QPushButton" name="connectButton">
-               <property name="text">
-                <string>连接设备</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QPushButton" name="disconnectButton">
-               <property name="text">
-                <string>断开连接</string>
-               </property>
-               <property name="enabled">
-                <bool>false</bool>
-               </property>
-              </widget>
-             </item>
-            </layout>
            </item>
           </layout>
          </widget>
-        </item>
-        <item>
-         <widget class="QGroupBox" name="managementGroup">
-          <property name="title">
-           <string>管理功能</string>
-          </property>
-          <layout class="QVBoxLayout" name="managementLayout">
+         <widget class="QWidget" name="appPage">
+          <layout class="QVBoxLayout" name="appPageLayout">
            <item>
-            <widget class="QPushButton" name="appManageButton">
+            <widget class="QLabel" name="appPlaceholder">
              <property name="text">
-              <string>应用管理</string>
+              <string>应用管理功能开发中...</string>
              </property>
-             <property name="enabled">
-              <bool>false</bool>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QPushButton" name="fileManageButton">
-             <property name="text">
-              <string>文件管理</string>
-             </property>
-             <property name="enabled">
-              <bool>false</bool>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QPushButton" name="photoManageButton">
-             <property name="text">
-              <string>照片管理</string>
-             </property>
-             <property name="enabled">
-              <bool>false</bool>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
              </property>
             </widget>
            </item>
           </layout>
          </widget>
-        </item>
-        <item>
-         <spacer name="leftSpacer">
-          <property name="orientation">
-           <enum>Qt::Vertical</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>20</width>
-            <height>40</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
-       </layout>
-      </widget>
-      <widget class="QTextEdit" name="infoDisplay">
-       <property name="readOnly">
-        <bool>true</bool>
-       </property>
-      </widget>
+         <widget class="QWidget" name="contactPage">
+          <layout class="QVBoxLayout" name="contactPageLayout">
+           <item>
+            <widget class="QLabel" name="contactPlaceholder">
+             <property name="text">
+              <string>通讯录管理功能开发中...</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="videoPage">
+          <layout class="QVBoxLayout" name="videoPageLayout">
+           <item>
+            <widget class="QLabel" name="videoPlaceholder">
+             <property name="text">
+              <string>视频管理功能开发中...</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="musicPage">
+          <layout class="QVBoxLayout" name="musicPageLayout">
+           <item>
+            <widget class="QLabel" name="musicPlaceholder">
+             <property name="text">
+              <string>音乐管理功能开发中...</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="ringtonePage">
+          <layout class="QVBoxLayout" name="ringtonePageLayout">
+           <item>
+            <widget class="QLabel" name="ringtonePlaceholder">
+             <property name="text">
+              <string>铃声管理功能开发中...</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="filePage">
+          <layout class="QVBoxLayout" name="filePageLayout">
+           <item>
+            <widget class="QLabel" name="filePlaceholder">
+             <property name="text">
+              <string>文件管理功能开发中...</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="morePage">
+          <layout class="QVBoxLayout" name="morePageLayout">
+           <item>
+            <widget class="QLabel" name="morePlaceholder">
+             <property name="text">
+              <string>更多功能开发中...</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
      </widget>
     </item>
    </layout>
@@ -140,7 +480,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>800</width>
+     <width>1000</width>
      <height>22</height>
     </rect>
    </property>
