@@ -5,6 +5,7 @@
 
 #include "core/device/devicemanager.h"
 #include "core/device/deviceinfo.h"
+#include "core/photo/photomanager.h"
 
 class DebugWindow;
 class DeviceConnectDialog;
@@ -58,9 +59,11 @@ private:
     // 业务逻辑
     DeviceManager *m_deviceManager;
     DeviceInfoManager *m_infoManager;
+    PhotoManager *m_photoManager;
     
     // 当前连接的设备名称
     QString m_connectedDeviceName;
+    QString m_currentUdid;
     
     // 调试窗口
     DebugWindow *m_debugWindow;

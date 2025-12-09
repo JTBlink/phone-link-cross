@@ -84,4 +84,38 @@ typedef lockdownd_error_t (*lockdownd_get_value_func)(
     plist_t *value
 );
 
+/**
+ * Requests to start a service and retrieve it's port on success.
+ * Sends the escrow bag from the device's pair record.
+ *
+ * @param client The lockdownd client
+ * @param identifier The identifier of the service to start
+ * @param service The service descriptor on success or NULL on failure
+ *
+ * @return LOCKDOWN_E_SUCCESS on success, LOCKDOWN_E_INVALID_ARG if a parameter
+ *  is NULL, LOCKDOWN_E_INVALID_SERVICE if the requested service is not known
+ *  by the device, LOCKDOWN_E_START_SERVICE_FAILED if the service could not be
+ *  started by the device
+ *
+ * @原型 lockdownd_error_t lockdownd_start_service(lockdownd_client_t client, const char *identifier, lockdownd_service_descriptor_t *service);
+ */
+typedef lockdownd_error_t (*lockdownd_start_service_func)(
+    lockdownd_client_t client,
+    const char *identifier,
+    lockdownd_service_descriptor_t *service
+);
+
+/**
+ * Frees memory of a service descriptor as returned by lockdownd_start_service()
+ *
+ * @param service The service descriptor to free
+ *
+ * @return LOCKDOWN_E_SUCCESS on success
+ *
+ * @原型 lockdownd_error_t lockdownd_service_descriptor_free(lockdownd_service_descriptor_t service);
+ */
+typedef lockdownd_error_t (*lockdownd_service_descriptor_free_func)(
+    lockdownd_service_descriptor_t service
+);
+
 #endif // LOCKDOWN_DYNAMIC_H

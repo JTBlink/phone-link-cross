@@ -192,6 +192,11 @@ set(SOURCES
     ${SRC_DIR}/ui/deviceconnectdialog.cpp
     ${SRC_DIR}/ui/deviceconnectdialog.h
     ${SRC_DIR}/ui/deviceconnectdialog.ui
+    ${SRC_DIR}/ui/photopage.cpp
+    ${SRC_DIR}/ui/photopage.h
+    ${SRC_DIR}/ui/photopage.ui
+    ${SRC_DIR}/ui/flowlayout.cpp
+    ${SRC_DIR}/ui/flowlayout.h
     
     # Core - Device Management
     ${SRC_DIR}/core/device/devicemanager.cpp
@@ -199,11 +204,16 @@ set(SOURCES
     ${SRC_DIR}/core/device/deviceinfo.cpp
     ${SRC_DIR}/core/device/deviceinfo.h
     
+    # Core - Photo Management
+    ${SRC_DIR}/core/photo/photomanager.cpp
+    ${SRC_DIR}/core/photo/photomanager.h
+    
     # Platform Layer
     ${SRC_DIR}/platform/libimobiledevice_dynamic.cpp
     ${SRC_DIR}/platform/libimobiledevice_dynamic.h
     ${SRC_DIR}/platform/lockdown_dynamic.h
     ${SRC_DIR}/platform/plist_dynamic.h
+    ${SRC_DIR}/platform/afc_dynamic.h
 )
 
 qt_add_executable(phone-linkc
@@ -217,6 +227,7 @@ target_include_directories(phone-linkc PRIVATE
     ${SRC_DIR}/ui
     ${SRC_DIR}/core
     ${SRC_DIR}/core/device
+    ${SRC_DIR}/core/photo
     ${SRC_DIR}/platform
 )
 

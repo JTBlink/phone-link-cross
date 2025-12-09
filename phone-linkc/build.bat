@@ -104,6 +104,7 @@ if /i "%1"=="release" (
 :parse_remaining_args
 if "%1"=="check-deps" goto check_deps
 if "%1"=="install-deps" goto install_deps
+if "%1"=="clean" goto clean
 if "%1"=="help" goto show_help  
 if "%1"=="" goto init_build
 if /i "%1"=="debug" goto init_build
@@ -471,6 +472,79 @@ if exist "%INSTALL_SCRIPT%" (
 )
 goto end
 
+:clean
+call :log_message "Cleaning build artifacts..."
+call :log_newline
+
+REM Remove build directory
+if exist build (
+    call :log_message "Removing build directory..."
+    rmdir /s /q build
+    if !errorlevel! equ 0 (
+        call :log_success "Build directory removed successfully"
+    ) else (
+        call :log_warning "Failed to remove build directory"
+    )
+) else (
+    call :log_info "Build directory does not exist"
+)
+
+call :log_newline
+
+REM Remove deployment directories
+if exist Release\deploy (
+    call :log_message "Removing Release\deploy directory..."
+    rmdir /s /q Release\deploy
+    if !errorlevel! equ 0 (
+        call :log_success "Release\deploy directory removed successfully"
+    ) else (
+        call :log_warning "Failed to remove Release\deploy directory"
+    )
+) else (
+    call :log_info "Release\deploy directory does not exist"
+)
+
+if exist Debug\deploy (
+    call :log_message "Removing Debug\deploy directory..."
+    rmdir /s /q Debug\deploy
+    if !errorlevel! equ 0 (
+        call :log_success "Debug\deploy directory removed successfully"
+    ) else (
+        call :log_warning "Failed to remove Debug\deploy directory"
+    )
+) else (
+    call :log_info "Debug\deploy directory does not exist"
+)
+
+call :log_newline
+
+REM Remove CMake generated files
+call :log_message "Removing CMake generated files..."
+if exist CMakeCache.txt (
+    del /q CMakeCache.txt
+    if !errorlevel! equ 0 (
+        call :log_success "CMakeCache.txt removed"
+    )
+)
+
+if exist CMakeFiles (
+    rmdir /s /q CMakeFiles
+    if !errorlevel! equ 0 (
+        call :log_success "CMakeFiles directory removed"
+    )
+)
+
+for %%f in (*.cmake) do (
+    del /q "%%f"
+    if !errorlevel! equ 0 (
+        call :log_info "Removed: %%f"
+    )
+)
+
+call :log_newline
+call :log_success "Clean operation completed!"
+goto end
+
 :show_help
 echo Usage: build.bat [build_type] [option]
 echo.
@@ -481,6 +555,7 @@ echo.
 echo Options:
 echo   check-deps              - Check dependencies
 echo   install-deps            - Install all dependencies
+echo   clean                   - Clean build artifacts and temporary files
 echo   help                    - Show this help
 echo   (no args)               - Run full build (Release mode)
 echo.
@@ -488,6 +563,7 @@ echo Examples:
 echo   build.bat                           - Run full Release build
 echo   build.bat debug                     - Run full Debug build
 echo   build.bat release                   - Run full Release build
+echo   build.bat clean                     - Clean build artifacts
 echo   build.bat check-deps               - Check all dependencies
 echo   build.bat install-deps             - Install all dependencies
 echo   build.bat debug check-deps         - Check deps (Debug mode set)
@@ -501,8 +577,9 @@ echo Recommended workflow:
 echo   1. build.bat install-deps          - Install dependencies
 echo   2. Restart command prompt          - Apply environment variables  
 echo   3. build.bat check-deps           - Verify installation
-echo   4. build.bat debug                - Build for development
-echo   5. build.bat release              - Build for production
+echo   4. build.bat clean                 - Clean previous build
+echo   5. build.bat debug                - Build for development
+echo   6. build.bat release              - Build for production
 echo.
 goto end
 

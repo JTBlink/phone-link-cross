@@ -49,6 +49,7 @@
 
 #include "plist_dynamic.h"
 #include "lockdown_dynamic.h"
+#include "afc_dynamic.h"
 
 /* ============================================================================
  * idevice 函数指针类型定义
@@ -258,6 +259,30 @@ public:
     plist_get_string_ptr_func plist_get_string_ptr;   ///< 获取字符串指针（无需释放，推荐）
     plist_get_bool_val_func plist_get_bool_val;       ///< 获取布尔值
     plist_get_uint_val_func plist_get_uint_val;       ///< 获取整数值
+    
+    /* ========================================================================
+     * AFC (Apple File Conduit) 库函数指针
+     *
+     * AFC 服务用于访问 iOS 设备的文件系统。
+     * ======================================================================== */
+    
+    afc_client_new_func afc_client_new;                   ///< 创建 AFC 客户端
+    afc_client_start_service_func afc_client_start_service; ///< 启动 AFC 服务
+    afc_client_free_func afc_client_free;                 ///< 释放 AFC 客户端
+    afc_get_device_info_func afc_get_device_info;         ///< 获取设备信息
+    afc_read_directory_func afc_read_directory;           ///< 读取目录
+    afc_get_file_info_func afc_get_file_info;             ///< 获取文件信息
+    afc_file_open_func afc_file_open;                     ///< 打开文件
+    afc_file_close_func afc_file_close;                   ///< 关闭文件
+    afc_file_read_func afc_file_read;                     ///< 读取文件
+    afc_dictionary_free_func afc_dictionary_free;         ///< 释放字典
+    
+    /* ========================================================================
+     * lockdownd 服务启动函数指针
+     * ======================================================================== */
+    
+    lockdownd_start_service_func lockdownd_start_service;                     ///< 启动服务
+    lockdownd_service_descriptor_free_func lockdownd_service_descriptor_free; ///< 释放服务描述符
     
 private:
     /* ========================================================================

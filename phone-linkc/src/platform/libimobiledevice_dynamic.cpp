@@ -21,6 +21,8 @@ LibimobiledeviceDynamic::LibimobiledeviceDynamic()
     lockdownd_client_new_with_handshake = nullptr;
     lockdownd_client_free = nullptr;
     lockdownd_get_value = nullptr;
+    lockdownd_start_service = nullptr;
+    lockdownd_service_descriptor_free = nullptr;
     
     plist_free = nullptr;
     plist_get_node_type = nullptr;
@@ -28,6 +30,18 @@ LibimobiledeviceDynamic::LibimobiledeviceDynamic()
     plist_get_string_ptr = nullptr;
     plist_get_bool_val = nullptr;
     plist_get_uint_val = nullptr;
+    
+    // AFC 函数指针
+    afc_client_new = nullptr;
+    afc_client_start_service = nullptr;
+    afc_client_free = nullptr;
+    afc_get_device_info = nullptr;
+    afc_read_directory = nullptr;
+    afc_get_file_info = nullptr;
+    afc_file_open = nullptr;
+    afc_file_close = nullptr;
+    afc_file_read = nullptr;
+    afc_dictionary_free = nullptr;
 }
 
 LibimobiledeviceDynamic::~LibimobiledeviceDynamic()
@@ -132,6 +146,20 @@ bool LibimobiledeviceDynamic::initialize()
     success &= loadFunction("lockdownd_client_new_with_handshake", lockdownd_client_new_with_handshake, m_imobiledeviceLib);
     success &= loadFunction("lockdownd_client_free", lockdownd_client_free, m_imobiledeviceLib);
     success &= loadFunction("lockdownd_get_value", lockdownd_get_value, m_imobiledeviceLib);
+    success &= loadFunction("lockdownd_start_service", lockdownd_start_service, m_imobiledeviceLib);
+    success &= loadFunction("lockdownd_service_descriptor_free", lockdownd_service_descriptor_free, m_imobiledeviceLib);
+    
+    // 加载 AFC 函数
+    success &= loadFunction("afc_client_new", afc_client_new, m_imobiledeviceLib);
+    success &= loadFunction("afc_client_start_service", afc_client_start_service, m_imobiledeviceLib);
+    success &= loadFunction("afc_client_free", afc_client_free, m_imobiledeviceLib);
+    success &= loadFunction("afc_get_device_info", afc_get_device_info, m_imobiledeviceLib);
+    success &= loadFunction("afc_read_directory", afc_read_directory, m_imobiledeviceLib);
+    success &= loadFunction("afc_get_file_info", afc_get_file_info, m_imobiledeviceLib);
+    success &= loadFunction("afc_file_open", afc_file_open, m_imobiledeviceLib);
+    success &= loadFunction("afc_file_close", afc_file_close, m_imobiledeviceLib);
+    success &= loadFunction("afc_file_read", afc_file_read, m_imobiledeviceLib);
+    success &= loadFunction("afc_dictionary_free", afc_dictionary_free, m_imobiledeviceLib);
     
     // 加载plist函数
     success &= loadFunction("plist_free", plist_free, m_plistLib);
@@ -189,6 +217,8 @@ void LibimobiledeviceDynamic::cleanup()
     lockdownd_client_new_with_handshake = nullptr;
     lockdownd_client_free = nullptr;
     lockdownd_get_value = nullptr;
+    lockdownd_start_service = nullptr;
+    lockdownd_service_descriptor_free = nullptr;
     
     plist_free = nullptr;
     plist_get_node_type = nullptr;
@@ -196,6 +226,18 @@ void LibimobiledeviceDynamic::cleanup()
     plist_get_string_ptr = nullptr;
     plist_get_bool_val = nullptr;
     plist_get_uint_val = nullptr;
+    
+    // AFC 函数指针
+    afc_client_new = nullptr;
+    afc_client_start_service = nullptr;
+    afc_client_free = nullptr;
+    afc_get_device_info = nullptr;
+    afc_read_directory = nullptr;
+    afc_get_file_info = nullptr;
+    afc_file_open = nullptr;
+    afc_file_close = nullptr;
+    afc_file_read = nullptr;
+    afc_dictionary_free = nullptr;
     
     m_initialized = false;
     qDebug() << "动态库加载器已清理";

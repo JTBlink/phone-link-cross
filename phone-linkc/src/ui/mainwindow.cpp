@@ -12,10 +12,14 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
     , m_deviceManager(new DeviceManager(this))
     , m_infoManager(new DeviceInfoManager(this))
+    , m_photoManager(new PhotoManager(this))
     , m_debugWindow(nullptr)
 {
     ui->setupUi(this);
     setupUI();
+    
+    // 设置照片页面的照片管理器
+    ui->photoPage->setPhotoManager(m_photoManager);
     
     // 连接设备管理器信号
     connect(m_deviceManager, &DeviceManager::deviceConnected,
@@ -26,7 +30,7 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onDeviceError);
     
     setWindowTitle("iOS 设备管理器 - libimobiledevice 示例");
-    resize(800, 600);
+    resize(1160, 780);
 }
 
 MainWindow::~MainWindow()
@@ -69,6 +73,8 @@ void MainWindow::setupUI()
 void MainWindow::onDeviceConnected(const QString &udid)
 {
     qDebug() << "UI: 设备已连接" << udid;
+    m_currentUdid = udid;
+    
     // 如果设备名称为空，使用默认名称
     if (m_connectedDeviceName.isEmpty()) {
         m_connectedDeviceName = "iOS Device";
@@ -79,16 +85,27 @@ void MainWindow::onDeviceConnected(const QString &udid)
     updateDisplayText(QString(), QString("已连接到设备: %1").arg(m_connectedDeviceName));
     updateConnectionStatus();
     updateDeviceInfo(udid);
+    
+    // 更新照片页面
+    ui->photoPage->setCurrentDevice(udid);
 }
 
 void MainWindow::onDeviceDisconnected()
 {
     qDebug() << "UI: 设备已断开连接";
     m_connectedDeviceName.clear();
+    m_currentUdid.clear();
+    
+    // 断开照片管理器连接
+    m_photoManager->disconnect();
+    
     ui->deviceNameLabel->setText("未连接设备");
     ui->deviceTypeLabel->setText("点击连接设备");
     updateDisplayText("设备已断开连接\n\n点击【连接设备】按钮连接新设备", "设备已断开连接");
     updateConnectionStatus();
+    
+    // 清空照片页面
+    ui->photoPage->clearDevice();
 }
 
 void MainWindow::onDeviceError(const QString &error)
@@ -106,9 +123,13 @@ void MainWindow::onConnectButtonClicked()
         QString udid = dialog.getSelectedDeviceUdid();
         QString name = dialog.getSelectedDeviceName();
         if (!udid.isEmpty()) {
+            m_currentUdid = udid;
             m_connectedDeviceName = name.isEmpty() ? "iOS Device" : name;
             ui->deviceNameLabel->setText(m_connectedDeviceName);
             updateDeviceInfo(udid);
+            
+            // 更新照片页面
+            ui->photoPage->setCurrentDevice(udid);
         }
     }
 }
@@ -219,3 +240,4 @@ void MainWindow::onOpenDebugWindow()
     m_debugWindow->raise();
     m_debugWindow->activateWindow();
 }
+
