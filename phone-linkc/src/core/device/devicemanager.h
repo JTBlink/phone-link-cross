@@ -27,6 +27,7 @@ public:
     QStringList getConnectedDevices() const;
     QString getCurrentDevice() const { return m_currentUdid; }
     bool isConnected() const { return m_isConnected; }
+    QString getDeviceName(const QString &udid);
 
 signals:
     void deviceFound(const QString &udid, const QString &name);
@@ -48,7 +49,6 @@ private:
     
     // 私有方法
     bool initializeConnection(const QString &udid);
-    QString getDeviceName(const QString &udid);
     void cleanup();
     void scanCurrentDevices();
     

@@ -2,10 +2,12 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include <QListWidgetItem>
 
 #include "core/device/devicemanager.h"
 #include "core/device/deviceinfo.h"
+
+class DebugWindow;
+class DeviceConnectDialog;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -22,15 +24,12 @@ public:
     ~MainWindow();
 
 private slots:
-    void onDeviceFound(const QString &udid, const QString &name);
-    void onDeviceLost(const QString &udid);
     void onDeviceConnected(const QString &udid);
     void onDeviceDisconnected();
     void onDeviceError(const QString &error);
-    void onNoDevicesFound();
-    void onDeviceSelectionChanged();
     void onConnectButtonClicked();
-    void onRefreshButtonClicked();
+    void onDisconnectButtonClicked();
+    void onOpenDebugWindow();
 
 private:
     void setupUI();
@@ -58,6 +57,12 @@ private:
     // 业务逻辑
     DeviceManager *m_deviceManager;
     DeviceInfoManager *m_infoManager;
+    
+    // 当前连接的设备名称
+    QString m_connectedDeviceName;
+    
+    // 调试窗口
+    DebugWindow *m_debugWindow;
 };
 
 #endif // MAINWINDOW_H

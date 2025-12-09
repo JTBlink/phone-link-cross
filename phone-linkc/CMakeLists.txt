@@ -186,6 +186,12 @@ set(SOURCES
     ${SRC_DIR}/ui/mainwindow.cpp
     ${SRC_DIR}/ui/mainwindow.h
     ${SRC_DIR}/ui/mainwindow.ui
+    ${SRC_DIR}/ui/debugwindow.cpp
+    ${SRC_DIR}/ui/debugwindow.h
+    ${SRC_DIR}/ui/debugwindow.ui
+    ${SRC_DIR}/ui/deviceconnectdialog.cpp
+    ${SRC_DIR}/ui/deviceconnectdialog.h
+    ${SRC_DIR}/ui/deviceconnectdialog.ui
     
     # Core - Device Management
     ${SRC_DIR}/core/device/devicemanager.cpp

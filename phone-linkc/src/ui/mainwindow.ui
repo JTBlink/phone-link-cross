@@ -23,32 +23,106 @@
       <widget class="QWidget" name="leftWidget" native="true">
        <layout class="QVBoxLayout" name="leftLayout">
         <item>
-         <widget class="QListWidget" name="deviceList">
-          <property name="minimumSize">
-           <size>
-            <width>200</width>
-            <height>0</height>
-           </size>
+         <widget class="QGroupBox" name="deviceGroup">
+          <property name="title">
+           <string>设备连接</string>
           </property>
+          <layout class="QVBoxLayout" name="deviceLayout">
+           <item>
+            <widget class="QLabel" name="deviceNameLabel">
+             <property name="text">
+              <string>未连接设备</string>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>11</pointsize>
+               <weight>75</weight>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="wordWrap">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="connectButtonLayout">
+             <item>
+              <widget class="QPushButton" name="connectButton">
+               <property name="text">
+                <string>连接设备</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="disconnectButton">
+               <property name="text">
+                <string>断开连接</string>
+               </property>
+               <property name="enabled">
+                <bool>false</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
          </widget>
         </item>
         <item>
-         <layout class="QHBoxLayout" name="buttonLayout">
-          <item>
-           <widget class="QPushButton" name="connectButton">
-            <property name="text">
-             <string>连接设备</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="refreshButton">
-            <property name="text">
-             <string>刷新列表</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
+         <widget class="QGroupBox" name="managementGroup">
+          <property name="title">
+           <string>管理功能</string>
+          </property>
+          <layout class="QVBoxLayout" name="managementLayout">
+           <item>
+            <widget class="QPushButton" name="appManageButton">
+             <property name="text">
+              <string>应用管理</string>
+             </property>
+             <property name="enabled">
+              <bool>false</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="fileManageButton">
+             <property name="text">
+              <string>文件管理</string>
+             </property>
+             <property name="enabled">
+              <bool>false</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="photoManageButton">
+             <property name="text">
+              <string>照片管理</string>
+             </property>
+             <property name="enabled">
+              <bool>false</bool>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <spacer name="leftSpacer">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
         </item>
        </layout>
       </widget>
@@ -70,6 +144,13 @@
      <height>22</height>
     </rect>
    </property>
+   <widget class="QMenu" name="menuDebug">
+    <property name="title">
+     <string>调试(&amp;D)</string>
+    </property>
+    <addaction name="actionOpenDebugWindow"/>
+   </widget>
+   <addaction name="menuDebug"/>
   </widget>
   <widget class="QStatusBar" name="statusbar">
    <widget class="QLabel" name="statusLabel">
@@ -78,6 +159,14 @@
     </property>
    </widget>
   </widget>
+  <action name="actionOpenDebugWindow">
+   <property name="text">
+    <string>打开调试窗口(&amp;O)</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+D</string>
+   </property>
+  </action>
  </widget>
  <resources/>
  <connections/>
