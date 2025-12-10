@@ -14,6 +14,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_infoManager(new DeviceInfoManager(this))
     , m_photoManager(new PhotoManager(this))
     , m_fileManager(new FileManager(this))
+    , m_appManager(new AppManager(this))
     , m_debugWindow(nullptr)
 {
     ui->setupUi(this);
@@ -24,6 +25,10 @@ MainWindow::MainWindow(QWidget *parent)
     
     // 设置文件管理器的文件管理器
     ui->filePage->setFileManager(m_fileManager);
+    
+    // 初始化应用页面
+    m_appPage = ui->appPage;
+    m_appPage->setAppManager(m_appManager);
     
     // 连接设备管理器信号
     connect(m_deviceManager, &DeviceManager::deviceConnected,
@@ -95,6 +100,11 @@ void MainWindow::onDeviceConnected(const QString &udid)
     
     // 更新文件页面
     ui->filePage->setCurrentDevice(udid);
+    
+    // 更新应用页面
+    if (m_appPage) {
+        m_appPage->setCurrentDevice(udid);
+    }
 }
 
 void MainWindow::onDeviceDisconnected()
@@ -109,6 +119,9 @@ void MainWindow::onDeviceDisconnected()
     // 断开文件管理器连接
     m_fileManager->disconnectFromDevice();
     
+    // 断开应用管理器连接
+    m_appManager->disconnectFromDevice();
+    
     ui->deviceNameLabel->setText("未连接设备");
     ui->deviceTypeLabel->setText("点击连接设备");
     updateDisplayText("设备已断开连接\n\n点击【连接设备】按钮连接新设备", "设备已断开连接");
@@ -119,6 +132,11 @@ void MainWindow::onDeviceDisconnected()
     
     // 清空文件页面
     ui->filePage->clearDevice();
+    
+    // 清空应用页面
+    if (m_appPage) {
+        m_appPage->clearDevice();
+    }
 }
 
 void MainWindow::onDeviceError(const QString &error)
@@ -146,6 +164,11 @@ void MainWindow::onConnectButtonClicked()
             
             // 更新文件页面
             ui->filePage->setCurrentDevice(udid);
+            
+            // 更新应用页面
+            if (m_appPage) {
+                m_appPage->setCurrentDevice(udid);
+            }
         }
     }
 }

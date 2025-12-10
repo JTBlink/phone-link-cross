@@ -31,6 +31,29 @@ LibimobiledeviceDynamic::LibimobiledeviceDynamic()
     plist_get_bool_val = nullptr;
     plist_get_uint_val = nullptr;
     
+    plist_get_data_val = nullptr;
+    
+    // 新增 plist 函数指针
+    plist_new_dict = nullptr;
+    plist_new_string = nullptr;
+    plist_new_bool = nullptr;
+    plist_dict_set_item = nullptr;
+    plist_array_get_size = nullptr;
+    plist_array_get_item = nullptr;
+    plist_dict_get_item = nullptr;
+    plist_dict_new_iter = nullptr;
+    plist_dict_next_item = nullptr;
+    plist_new_array = nullptr;
+    plist_array_append_item = nullptr;
+    
+    // installation_proxy 函数指针
+    instproxy_client_new = nullptr;
+    instproxy_client_free = nullptr;
+    instproxy_browse = nullptr;
+    instproxy_install = nullptr;
+    instproxy_uninstall = nullptr;
+    instproxy_lookup = nullptr;
+    
     // AFC 函数指针
     afc_client_new = nullptr;
     afc_client_start_service = nullptr;
@@ -176,6 +199,28 @@ bool LibimobiledeviceDynamic::initialize()
     success &= loadFunction("plist_get_string_ptr", plist_get_string_ptr, m_plistLib);
     success &= loadFunction("plist_get_bool_val", plist_get_bool_val, m_plistLib);
     success &= loadFunction("plist_get_uint_val", plist_get_uint_val, m_plistLib);
+    success &= loadFunction("plist_get_data_val", plist_get_data_val, m_plistLib);
+    
+    // 加载新增 plist 函数
+    success &= loadFunction("plist_new_dict", plist_new_dict, m_plistLib);
+    success &= loadFunction("plist_new_string", plist_new_string, m_plistLib);
+    success &= loadFunction("plist_new_bool", plist_new_bool, m_plistLib);
+    success &= loadFunction("plist_dict_set_item", plist_dict_set_item, m_plistLib);
+    success &= loadFunction("plist_array_get_size", plist_array_get_size, m_plistLib);
+    success &= loadFunction("plist_array_get_item", plist_array_get_item, m_plistLib);
+    success &= loadFunction("plist_dict_get_item", plist_dict_get_item, m_plistLib);
+    success &= loadFunction("plist_dict_new_iter", plist_dict_new_iter, m_plistLib);
+    success &= loadFunction("plist_dict_next_item", plist_dict_next_item, m_plistLib);
+    success &= loadFunction("plist_new_array", plist_new_array, m_plistLib);
+    success &= loadFunction("plist_array_append_item", plist_array_append_item, m_plistLib);
+    
+    // 加载 instproxy 函数
+    success &= loadFunction("instproxy_client_new", instproxy_client_new, m_imobiledeviceLib);
+    success &= loadFunction("instproxy_client_free", instproxy_client_free, m_imobiledeviceLib);
+    success &= loadFunction("instproxy_browse", instproxy_browse, m_imobiledeviceLib);
+    success &= loadFunction("instproxy_install", instproxy_install, m_imobiledeviceLib);
+    success &= loadFunction("instproxy_uninstall", instproxy_uninstall, m_imobiledeviceLib);
+    success &= loadFunction("instproxy_lookup", instproxy_lookup, m_imobiledeviceLib);
     
     if (!success) {
         qWarning() << "部分函数加载失败";
@@ -234,6 +279,26 @@ void LibimobiledeviceDynamic::cleanup()
     plist_get_string_ptr = nullptr;
     plist_get_bool_val = nullptr;
     plist_get_uint_val = nullptr;
+    plist_get_data_val = nullptr;
+    
+    plist_new_dict = nullptr;
+    plist_new_string = nullptr;
+    plist_new_bool = nullptr;
+    plist_dict_set_item = nullptr;
+    plist_array_get_size = nullptr;
+    plist_array_get_item = nullptr;
+    plist_dict_get_item = nullptr;
+    plist_dict_new_iter = nullptr;
+    plist_dict_next_item = nullptr;
+    plist_new_array = nullptr;
+    plist_array_append_item = nullptr;
+    
+    instproxy_client_new = nullptr;
+    instproxy_client_free = nullptr;
+    instproxy_browse = nullptr;
+    instproxy_install = nullptr;
+    instproxy_uninstall = nullptr;
+    instproxy_lookup = nullptr;
     
     // AFC 函数指针
     afc_client_new = nullptr;

@@ -364,19 +364,13 @@ QPushButton:disabled {
            </sizepolicy>
           </property>
          </widget>
-         <widget class="QWidget" name="appPage">
-          <layout class="QVBoxLayout" name="appPageLayout">
-           <item>
-            <widget class="QLabel" name="appPlaceholder">
-             <property name="text">
-              <string>应用管理功能开发中...</string>
-             </property>
-             <property name="alignment">
-              <set>Qt::AlignCenter</set>
-             </property>
-            </widget>
-           </item>
-          </layout>
+         <widget class="AppPage" name="appPage" native="true">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
          </widget>
          <widget class="QWidget" name="contactPage">
           <layout class="QVBoxLayout" name="contactPageLayout">
@@ -497,6 +491,12 @@ QPushButton:disabled {
   </action>
  </widget>
  <customwidgets>
+  <customwidget>
+   <class>AppPage</class>
+   <extends>QWidget</extends>
+   <header>ui/apppage.h</header>
+   <container>1</container>
+  </customwidget>
   <customwidget>
    <class>PhotoPage</class>
    <extends>QWidget</extends>

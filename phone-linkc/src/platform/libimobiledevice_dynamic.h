@@ -51,6 +51,8 @@
 #include "lockdown_dynamic.h"
 #include "afc_dynamic.h"
 
+#include "instproxy_dynamic.h"
+
 /* ============================================================================
  * idevice 函数指针类型定义
  *
@@ -259,6 +261,31 @@ public:
     plist_get_string_ptr_func plist_get_string_ptr;   ///< 获取字符串指针（无需释放，推荐）
     plist_get_bool_val_func plist_get_bool_val;       ///< 获取布尔值
     plist_get_uint_val_func plist_get_uint_val;       ///< 获取整数值
+    plist_get_data_val_func plist_get_data_val;       ///< 获取二进制数据
+    
+    // 新增 plist 创建和操作函数
+    plist_new_dict_func plist_new_dict;               ///< 创建字典
+    plist_new_string_func plist_new_string;           ///< 创建字符串
+    plist_new_bool_func plist_new_bool;               ///< 创建布尔值
+    plist_dict_set_item_func plist_dict_set_item;     ///< 设置字典项
+    plist_array_get_size_func plist_array_get_size;   ///< 获取数组大小
+    plist_array_get_item_func plist_array_get_item;   ///< 获取数组项
+    plist_dict_get_item_func plist_dict_get_item;     ///< 获取字典项
+    plist_dict_new_iter_func plist_dict_new_iter;     ///< 创建字典迭代器
+    plist_dict_next_item_func plist_dict_next_item;   ///< 遍历字典项
+    plist_new_array_func plist_new_array;             ///< 创建数组
+    plist_array_append_item_func plist_array_append_item; ///< 追加数组项
+    
+    /* ========================================================================
+     * installation_proxy 服务函数指针
+     * ======================================================================== */
+    
+    instproxy_client_new_func instproxy_client_new;
+    instproxy_client_free_func instproxy_client_free;
+    instproxy_browse_func instproxy_browse;
+    instproxy_install_func instproxy_install;
+    instproxy_uninstall_func instproxy_uninstall;
+    instproxy_lookup_func instproxy_lookup;
     
     /* ========================================================================
      * AFC (Apple File Conduit) 库函数指针

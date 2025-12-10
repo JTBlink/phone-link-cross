@@ -59,7 +59,7 @@ if(NOT WIN32)
     find_package(Threads REQUIRED)
 endif()
 
-find_package(Qt6 6.6 REQUIRED COMPONENTS Core Widgets Network)
+find_package(Qt6 6.6 REQUIRED COMPONENTS Core Widgets Network Concurrent)
 
 # 查找 libimobiledevice（可选）
 find_package(PkgConfig QUIET)
@@ -200,6 +200,9 @@ set(SOURCES
     ${SRC_DIR}/ui/filepage.ui
     ${SRC_DIR}/ui/flowlayout.cpp
     ${SRC_DIR}/ui/flowlayout.h
+    ${SRC_DIR}/ui/apppage.cpp
+    ${SRC_DIR}/ui/apppage.h
+    ${SRC_DIR}/ui/apppage.ui
     
     # Core - Device Management
     ${SRC_DIR}/core/device/devicemanager.cpp
@@ -215,12 +218,17 @@ set(SOURCES
     ${SRC_DIR}/core/file/filemanager.cpp
     ${SRC_DIR}/core/file/filemanager.h
     
+    # Core - App Management
+    ${SRC_DIR}/core/app/appmanager.cpp
+    ${SRC_DIR}/core/app/appmanager.h
+    
     # Platform Layer
     ${SRC_DIR}/platform/libimobiledevice_dynamic.cpp
     ${SRC_DIR}/platform/libimobiledevice_dynamic.h
     ${SRC_DIR}/platform/lockdown_dynamic.h
     ${SRC_DIR}/platform/plist_dynamic.h
     ${SRC_DIR}/platform/afc_dynamic.h
+    ${SRC_DIR}/platform/instproxy_dynamic.h
 )
 
 qt_add_executable(phone-linkc
@@ -236,6 +244,7 @@ target_include_directories(phone-linkc PRIVATE
     ${SRC_DIR}/core/device
     ${SRC_DIR}/core/photo
     ${SRC_DIR}/core/file
+    ${SRC_DIR}/core/app
     ${SRC_DIR}/platform
 )
 
@@ -248,6 +257,7 @@ target_link_libraries(phone-linkc
         Qt::Core
         Qt::Widgets
         Qt::Network
+        Qt::Concurrent
         $<$<NOT:$<PLATFORM_ID:Windows>>:Threads::Threads>
 )
 
