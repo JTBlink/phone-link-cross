@@ -22,10 +22,10 @@
 - ✅ **用户友好界面**: 现代化 Qt 图形界面，自适应 FlowLayout 布局
 - ✅ **动态库加载**: Windows 平台智能加载 DLL，无需静态链接，增强兼容性
 - ✅ **模拟模式**: 无需真实设备即可测试（开发友好）
-- ✅ **跨平台支持**: Windows、macOS、Linux 完整支持
-- ✅ **智能依赖管理**: 自动检测和配置 libimobiledevice
 
 ## 技术方案细节
+- ✅ **跨平台支持**: Windows、macOS、Linux 完整支持
+- ✅ **智能依赖管理**: 自动检测和配置 libimobiledevice
 
 ### 核心架构
 

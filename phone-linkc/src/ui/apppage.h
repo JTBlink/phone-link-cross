@@ -10,6 +10,8 @@
 #include <QTreeWidget>
 #include "../core/app/appmanager.h"
 
+class QProgressDialog;
+
 QT_BEGIN_NAMESPACE
 namespace Ui {
 class AppPage;
@@ -38,6 +40,7 @@ private slots:
     void onErrorOccurred(const QString &error);
     void onAppsLoaded(const QVector<AppInfo> &apps);
     void onAppSizeUpdated(const QString &bundleId, const QString &appSize, const QString &docSize);
+    void onProgressUpdated(const QString &message, int percent);
 
 private:
     void setupUI();
@@ -46,6 +49,7 @@ private:
     Ui::AppPage *ui;
     AppManager *m_appManager;
     QString m_currentUdid;
+    QProgressDialog *m_installProgress = nullptr;
 };
 
 #endif // APPPAGE_H

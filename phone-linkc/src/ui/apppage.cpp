@@ -3,6 +3,8 @@
 #include <QMessageBox>
 #include <QFileDialog>
 #include <QColor>
+#include <QProgressDialog>
+#include <QtConcurrent/QtConcurrent>
 
 AppPage::AppPage(QWidget *parent)
     : QWidget(parent)
@@ -39,6 +41,7 @@ void AppPage::setAppManager(AppManager *manager)
     connect(m_appManager, &AppManager::errorOccurred, this, &AppPage::onErrorOccurred);
     connect(m_appManager, &AppManager::appsLoaded, this, &AppPage::onAppsLoaded);
     connect(m_appManager, &AppManager::appSizeUpdated, this, &AppPage::onAppSizeUpdated);
+    connect(m_appManager, &AppManager::progressUpdated, this, &AppPage::onProgressUpdated);
 }
 
 void AppPage::setCurrentDevice(const QString &udid)
@@ -155,9 +158,38 @@ void AppPage::onInstallClicked()
     
     QString fileName = QFileDialog::getOpenFileName(this, "选择应用安装包",
                                                     "", "iOS 应用 (*.ipa)");
-    if (!fileName.isEmpty()) {
-        m_appManager->installApp(fileName);
+    if (fileName.isEmpty()) {
+        return;
     }
+    
+    // 创建进度对话框
+    QProgressDialog *progress = new QProgressDialog("正在准备安装...", "取消", 0, 100, this);
+    progress->setWindowTitle("安装应用");
+    progress->setWindowModality(Qt::WindowModal);
+    progress->setMinimumDuration(0);
+    progress->setValue(0);
+    
+    // 存储进度对话框指针，以便在进度更新时使用
+    m_installProgress = progress;
+    
+    // 在新线程中执行安装
+    QtConcurrent::run([this, fileName, progress]() {
+        bool success = m_appManager->installApp(fileName);
+        
+        // 在主线程中处理结果
+        QMetaObject::invokeMethod(this, [this, progress, success]() {
+            if (progress) {
+                progress->close();
+                progress->deleteLater();
+                m_installProgress = nullptr;
+            }
+            
+            if (success) {
+                QMessageBox::information(this, "成功", "应用安装成功");
+                refresh();
+            }
+        }, Qt::QueuedConnection);
+    });
 }
 
 void AppPage::onUninstallClicked()
@@ -190,5 +222,28 @@ void AppPage::onRefreshClicked()
 
 void AppPage::onErrorOccurred(const QString &error)
 {
+    // 关闭进度对话框（如果存在）
+    if (m_installProgress) {
+        m_installProgress->close();
+        m_installProgress->deleteLater();
+        m_installProgress = nullptr;
+    }
+    
     QMessageBox::warning(this, "错误", error);
+}
+
+void AppPage::onProgressUpdated(const QString &message, int percent)
+{
+    if (m_installProgress) {
+        m_installProgress->setLabelText(message);
+        m_installProgress->setValue(percent);
+        
+        // 如果用户点击了取消按钮
+        if (m_installProgress->wasCanceled()) {
+            // TODO: 实现取消安装的逻辑
+            m_installProgress->close();
+            m_installProgress->deleteLater();
+            m_installProgress = nullptr;
+        }
+    }
 }

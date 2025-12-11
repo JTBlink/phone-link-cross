@@ -11,6 +11,7 @@ DeviceManager::DeviceManager(QObject *parent)
     , m_device(nullptr)
     , m_lockdown(nullptr)
     , m_eventSubscribed(false)
+    , m_subscriptionContext(nullptr)
 {
     qDebug() << "DeviceManager 已创建";
     
@@ -277,7 +278,7 @@ void DeviceManager::cleanup()
 void DeviceManager::startEventSubscription()
 {
     LibimobiledeviceDynamic& loader = LibimobiledeviceDynamic::instance();
-    if (!loader.isInitialized() || !loader.idevice_event_subscribe) {
+    if (!loader.isInitialized() || !loader.idevice_events_subscribe) {
         qDebug() << "动态库未正确加载，无法启动事件订阅";
         return;
     }
@@ -291,14 +292,15 @@ void DeviceManager::startEventSubscription()
         deviceEventCallback(event, user_data);
     };
     
-    // 使用旧版 API (libimobiledevice 1.3.x)
-    idevice_error_t ret = loader.idevice_event_subscribe(callback_wrapper, this);
+    // 使用 v1.4.0+ API
+    idevice_error_t ret = loader.idevice_events_subscribe(&m_subscriptionContext, callback_wrapper, this);
     if (ret == IDEVICE_E_SUCCESS) {
         m_eventSubscribed = true;
-        qDebug() << "成功订阅 USB 设备事件通知 - 纯事件驱动模式";
+        qDebug() << "成功订阅设备事件通知（支持 USB 和网络设备） - v1.4.0+ API";
     } else {
-        qDebug() << "订阅 USB 设备事件失败";
+        qDebug() << "订阅设备事件失败";
         m_eventSubscribed = false;
+        m_subscriptionContext = nullptr;
     }
 }
 
@@ -306,11 +308,12 @@ void DeviceManager::stopEventSubscription()
 {
     LibimobiledeviceDynamic& loader = LibimobiledeviceDynamic::instance();
     
-    if (m_eventSubscribed && loader.idevice_event_unsubscribe) {
-        // 使用旧版 API (libimobiledevice 1.3.x)
-        loader.idevice_event_unsubscribe();
+    if (m_eventSubscribed && m_subscriptionContext && loader.idevice_events_unsubscribe) {
+        // 使用 v1.4.0+ API
+        loader.idevice_events_unsubscribe(m_subscriptionContext);
         m_eventSubscribed = false;
-        qDebug() << "已停止 USB 设备事件订阅";
+        m_subscriptionContext = nullptr;
+        qDebug() << "已停止设备事件订阅 - v1.4.0+ API";
     }
 }
 

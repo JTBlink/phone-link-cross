@@ -15,8 +15,13 @@ LibimobiledeviceDynamic::LibimobiledeviceDynamic()
     idevice_device_list_free = nullptr;
     idevice_new = nullptr;
     idevice_free = nullptr;
-    idevice_event_subscribe = nullptr;
-    idevice_event_unsubscribe = nullptr;
+    
+    // v1.4.0+ API
+    idevice_events_subscribe = nullptr;
+    idevice_events_unsubscribe = nullptr;
+    idevice_get_device_list_extended = nullptr;
+    idevice_device_list_extended_free = nullptr;
+    idevice_new_with_options = nullptr;
     
     lockdownd_client_new_with_handshake = nullptr;
     lockdownd_client_free = nullptr;
@@ -48,7 +53,7 @@ LibimobiledeviceDynamic::LibimobiledeviceDynamic()
     plist_new_uint = nullptr;
     plist_new_date = nullptr;
     plist_to_xml = nullptr;
-    plist_to_xml_free = nullptr;
+    plist_mem_free = nullptr;
     
     // installation_proxy 函数指针
     instproxy_client_new = nullptr;
@@ -144,7 +149,7 @@ bool LibimobiledeviceDynamic::initialize()
     for (const QString& path : searchPaths) {
         if (QDir(path).exists()) {
             // 检查关键文件是否存在
-            if (QFile::exists(path + "/imobiledevice.dll") && QFile::exists(path + "/plist.dll")) {
+            if (QFile::exists(path + "/libimobiledevice-1.0.dll") && QFile::exists(path + "/libplist-2.0.dll")) {
                 thirdpartyDir = path;
                 found = true;
                 qDebug() << "找到libimobiledevice库:" << thirdpartyDir;
@@ -168,124 +173,160 @@ bool LibimobiledeviceDynamic::initialize()
     QString nativePath = QDir::toNativeSeparators(thirdpartyDir);
     SetDllDirectoryA(nativePath.toLocal8Bit().constData());
     
-    // 加载imobiledevice.dll
-    QString imobiledevicePath = thirdpartyDir + "/imobiledevice.dll";
+    // 加载libimobiledevice-1.0.dll (v1.4.0)
+    QString imobiledevicePath = thirdpartyDir + "/libimobiledevice-1.0.dll";
     m_imobiledeviceLib = LoadLibraryA(imobiledevicePath.toLocal8Bit().constData());
     if (!m_imobiledeviceLib) {
         DWORD error = GetLastError();
-        qWarning() << "无法加载imobiledevice.dll，错误代码:" << error;
+        qWarning() << "无法加载libimobiledevice-1.0.dll，错误代码:" << error;
         qWarning() << "尝试路径:" << imobiledevicePath;
         return false;
     }
-    qDebug() << "成功加载imobiledevice.dll";
+    qDebug() << "成功加载libimobiledevice-1.0.dll";
     
-    // 加载plist.dll  
-    QString plistPath = thirdpartyDir + "/plist.dll";
+    // 加载libplist-2.0.dll (v2.7.0)
+    QString plistPath = thirdpartyDir + "/libplist-2.0.dll";
     m_plistLib = LoadLibraryA(plistPath.toLocal8Bit().constData());
     if (!m_plistLib) {
         DWORD error = GetLastError();
-        qWarning() << "无法加载plist.dll，错误代码:" << error;
+        qWarning() << "无法加载libplist-2.0.dll，错误代码:" << error;
         qWarning() << "尝试路径:" << plistPath;
         FreeLibrary(m_imobiledeviceLib);
         m_imobiledeviceLib = nullptr;
         return false;
     }
-    qDebug() << "成功加载plist.dll";
+    qDebug() << "成功加载libplist-2.0.dll";
     
     // 加载libimobiledevice函数
-    bool success = true;
-    success &= loadFunction("idevice_get_device_list", idevice_get_device_list, m_imobiledeviceLib);
-    success &= loadFunction("idevice_device_list_free", idevice_device_list_free, m_imobiledeviceLib);
-    success &= loadFunction("idevice_new", idevice_new, m_imobiledeviceLib);
-    success &= loadFunction("idevice_free", idevice_free, m_imobiledeviceLib);
-    success &= loadFunction("idevice_event_subscribe", idevice_event_subscribe, m_imobiledeviceLib);
-    success &= loadFunction("idevice_event_unsubscribe", idevice_event_unsubscribe, m_imobiledeviceLib);
+    QStringList failedFunctions;
+    int totalFunctions = 0;
+    int successCount = 0;
     
-    success &= loadFunction("lockdownd_client_new_with_handshake", lockdownd_client_new_with_handshake, m_imobiledeviceLib);
-    success &= loadFunction("lockdownd_client_free", lockdownd_client_free, m_imobiledeviceLib);
-    success &= loadFunction("lockdownd_get_value", lockdownd_get_value, m_imobiledeviceLib);
-    success &= loadFunction("lockdownd_start_service", lockdownd_start_service, m_imobiledeviceLib);
-    success &= loadFunction("lockdownd_service_descriptor_free", lockdownd_service_descriptor_free, m_imobiledeviceLib);
+    auto loadAndTrack = [&](const QString& name, auto& funcPtr, HMODULE lib) -> bool {
+        totalFunctions++;
+        if (loadFunction(name, funcPtr, lib)) {
+            successCount++;
+            return true;
+        } else {
+            failedFunctions << name;
+            return false;
+        }
+    };
+    
+    bool success = true;
+    
+    // 基础设备 API（必需）
+    success &= loadAndTrack("idevice_get_device_list", idevice_get_device_list, m_imobiledeviceLib);
+    success &= loadAndTrack("idevice_device_list_free", idevice_device_list_free, m_imobiledeviceLib);
+    success &= loadAndTrack("idevice_new", idevice_new, m_imobiledeviceLib);
+    success &= loadAndTrack("idevice_free", idevice_free, m_imobiledeviceLib);
+    
+    // v1.4.0+ 新版事件 API（必需）
+    success &= loadAndTrack("idevice_events_subscribe", idevice_events_subscribe, m_imobiledeviceLib);
+    success &= loadAndTrack("idevice_events_unsubscribe", idevice_events_unsubscribe, m_imobiledeviceLib);
+    
+    // v1.4.0+ 网络设备支持 API（必需）
+    success &= loadAndTrack("idevice_get_device_list_extended", idevice_get_device_list_extended, m_imobiledeviceLib);
+    success &= loadAndTrack("idevice_device_list_extended_free", idevice_device_list_extended_free, m_imobiledeviceLib);
+    success &= loadAndTrack("idevice_new_with_options", idevice_new_with_options, m_imobiledeviceLib);
+    
+    qDebug() << "使用 libimobiledevice v1.4.0+ API，支持网络设备和新事件系统";
+    
+    success &= loadAndTrack("lockdownd_client_new_with_handshake", lockdownd_client_new_with_handshake, m_imobiledeviceLib);
+    success &= loadAndTrack("lockdownd_client_free", lockdownd_client_free, m_imobiledeviceLib);
+    success &= loadAndTrack("lockdownd_get_value", lockdownd_get_value, m_imobiledeviceLib);
+    success &= loadAndTrack("lockdownd_start_service", lockdownd_start_service, m_imobiledeviceLib);
+    success &= loadAndTrack("lockdownd_service_descriptor_free", lockdownd_service_descriptor_free, m_imobiledeviceLib);
     
     // 加载 AFC 函数
-    success &= loadFunction("afc_client_new", afc_client_new, m_imobiledeviceLib);
-    success &= loadFunction("afc_client_start_service", afc_client_start_service, m_imobiledeviceLib);
-    success &= loadFunction("afc_client_free", afc_client_free, m_imobiledeviceLib);
-    success &= loadFunction("afc_get_device_info", afc_get_device_info, m_imobiledeviceLib);
-    success &= loadFunction("afc_read_directory", afc_read_directory, m_imobiledeviceLib);
-    success &= loadFunction("afc_get_file_info", afc_get_file_info, m_imobiledeviceLib);
-    success &= loadFunction("afc_file_open", afc_file_open, m_imobiledeviceLib);
-    success &= loadFunction("afc_file_close", afc_file_close, m_imobiledeviceLib);
-    success &= loadFunction("afc_file_read", afc_file_read, m_imobiledeviceLib);
-    success &= loadFunction("afc_file_write", afc_file_write, m_imobiledeviceLib);
-    success &= loadFunction("afc_make_directory", afc_make_directory, m_imobiledeviceLib);
-    success &= loadFunction("afc_remove_path", afc_remove_path, m_imobiledeviceLib);
-    success &= loadFunction("afc_rename_path", afc_rename_path, m_imobiledeviceLib);
-    success &= loadFunction("afc_dictionary_free", afc_dictionary_free, m_imobiledeviceLib);
+    success &= loadAndTrack("afc_client_new", afc_client_new, m_imobiledeviceLib);
+    success &= loadAndTrack("afc_client_start_service", afc_client_start_service, m_imobiledeviceLib);
+    success &= loadAndTrack("afc_client_free", afc_client_free, m_imobiledeviceLib);
+    success &= loadAndTrack("afc_get_device_info", afc_get_device_info, m_imobiledeviceLib);
+    success &= loadAndTrack("afc_read_directory", afc_read_directory, m_imobiledeviceLib);
+    success &= loadAndTrack("afc_get_file_info", afc_get_file_info, m_imobiledeviceLib);
+    success &= loadAndTrack("afc_file_open", afc_file_open, m_imobiledeviceLib);
+    success &= loadAndTrack("afc_file_close", afc_file_close, m_imobiledeviceLib);
+    success &= loadAndTrack("afc_file_read", afc_file_read, m_imobiledeviceLib);
+    success &= loadAndTrack("afc_file_write", afc_file_write, m_imobiledeviceLib);
+    success &= loadAndTrack("afc_make_directory", afc_make_directory, m_imobiledeviceLib);
+    success &= loadAndTrack("afc_remove_path", afc_remove_path, m_imobiledeviceLib);
+    success &= loadAndTrack("afc_rename_path", afc_rename_path, m_imobiledeviceLib);
+    success &= loadAndTrack("afc_dictionary_free", afc_dictionary_free, m_imobiledeviceLib);
     
     // 加载plist函数
-    success &= loadFunction("plist_free", plist_free, m_plistLib);
-    success &= loadFunction("plist_get_node_type", plist_get_node_type, m_plistLib);
-    success &= loadFunction("plist_get_string_val", plist_get_string_val, m_plistLib);
-    success &= loadFunction("plist_get_string_ptr", plist_get_string_ptr, m_plistLib);
-    success &= loadFunction("plist_get_bool_val", plist_get_bool_val, m_plistLib);
-    success &= loadFunction("plist_get_uint_val", plist_get_uint_val, m_plistLib);
-    success &= loadFunction("plist_get_data_val", plist_get_data_val, m_plistLib);
+    success &= loadAndTrack("plist_free", plist_free, m_plistLib);
+    success &= loadAndTrack("plist_get_node_type", plist_get_node_type, m_plistLib);
+    success &= loadAndTrack("plist_get_string_val", plist_get_string_val, m_plistLib);
+    success &= loadAndTrack("plist_get_string_ptr", plist_get_string_ptr, m_plistLib);
+    success &= loadAndTrack("plist_get_bool_val", plist_get_bool_val, m_plistLib);
+    success &= loadAndTrack("plist_get_uint_val", plist_get_uint_val, m_plistLib);
+    success &= loadAndTrack("plist_get_data_val", plist_get_data_val, m_plistLib);
     
     // 加载新增 plist 函数
-    success &= loadFunction("plist_new_dict", plist_new_dict, m_plistLib);
-    success &= loadFunction("plist_new_string", plist_new_string, m_plistLib);
-    success &= loadFunction("plist_new_bool", plist_new_bool, m_plistLib);
-    success &= loadFunction("plist_dict_set_item", plist_dict_set_item, m_plistLib);
-    success &= loadFunction("plist_array_get_size", plist_array_get_size, m_plistLib);
-    success &= loadFunction("plist_array_get_item", plist_array_get_item, m_plistLib);
-    success &= loadFunction("plist_dict_get_item", plist_dict_get_item, m_plistLib);
-    success &= loadFunction("plist_dict_new_iter", plist_dict_new_iter, m_plistLib);
-    success &= loadFunction("plist_dict_next_item", plist_dict_next_item, m_plistLib);
-    success &= loadFunction("plist_new_array", plist_new_array, m_plistLib);
-    success &= loadFunction("plist_array_append_item", plist_array_append_item, m_plistLib);
-    success &= loadFunction("plist_new_uint", plist_new_uint, m_plistLib);
-    success &= loadFunction("plist_new_date", plist_new_date, m_plistLib);
-    success &= loadFunction("plist_to_xml", plist_to_xml, m_plistLib);
-    success &= loadFunction("plist_to_xml_free", plist_to_xml_free, m_plistLib);
+    success &= loadAndTrack("plist_new_dict", plist_new_dict, m_plistLib);
+    success &= loadAndTrack("plist_new_string", plist_new_string, m_plistLib);
+    success &= loadAndTrack("plist_new_bool", plist_new_bool, m_plistLib);
+    success &= loadAndTrack("plist_dict_set_item", plist_dict_set_item, m_plistLib);
+    success &= loadAndTrack("plist_array_get_size", plist_array_get_size, m_plistLib);
+    success &= loadAndTrack("plist_array_get_item", plist_array_get_item, m_plistLib);
+    success &= loadAndTrack("plist_dict_get_item", plist_dict_get_item, m_plistLib);
+    success &= loadAndTrack("plist_dict_new_iter", plist_dict_new_iter, m_plistLib);
+    success &= loadAndTrack("plist_dict_next_item", plist_dict_next_item, m_plistLib);
+    success &= loadAndTrack("plist_new_array", plist_new_array, m_plistLib);
+    success &= loadAndTrack("plist_array_append_item", plist_array_append_item, m_plistLib);
+    success &= loadAndTrack("plist_new_uint", plist_new_uint, m_plistLib);
+    success &= loadAndTrack("plist_new_date", plist_new_date, m_plistLib);
+    success &= loadAndTrack("plist_to_xml", plist_to_xml, m_plistLib);
+    success &= loadAndTrack("plist_mem_free", plist_mem_free, m_plistLib);
     
     // 加载 instproxy 函数
-    success &= loadFunction("instproxy_client_new", instproxy_client_new, m_imobiledeviceLib);
-    success &= loadFunction("instproxy_client_free", instproxy_client_free, m_imobiledeviceLib);
-    success &= loadFunction("instproxy_browse", instproxy_browse, m_imobiledeviceLib);
-    success &= loadFunction("instproxy_install", instproxy_install, m_imobiledeviceLib);
-    success &= loadFunction("instproxy_uninstall", instproxy_uninstall, m_imobiledeviceLib);
-    success &= loadFunction("instproxy_lookup", instproxy_lookup, m_imobiledeviceLib);
+    success &= loadAndTrack("instproxy_client_new", instproxy_client_new, m_imobiledeviceLib);
+    success &= loadAndTrack("instproxy_client_free", instproxy_client_free, m_imobiledeviceLib);
+    success &= loadAndTrack("instproxy_browse", instproxy_browse, m_imobiledeviceLib);
+    success &= loadAndTrack("instproxy_install", instproxy_install, m_imobiledeviceLib);
+    success &= loadAndTrack("instproxy_uninstall", instproxy_uninstall, m_imobiledeviceLib);
+    success &= loadAndTrack("instproxy_lookup", instproxy_lookup, m_imobiledeviceLib);
     
     // 加载 mobilesync 函数
-    success &= loadFunction("mobilesync_client_start_service", mobilesync_client_start_service, m_imobiledeviceLib);
-    success &= loadFunction("mobilesync_client_new", mobilesync_client_new, m_imobiledeviceLib);
-    success &= loadFunction("mobilesync_client_free", mobilesync_client_free, m_imobiledeviceLib);
-    success &= loadFunction("mobilesync_receive", mobilesync_receive, m_imobiledeviceLib);
-    success &= loadFunction("mobilesync_send", mobilesync_send, m_imobiledeviceLib);
-    success &= loadFunction("mobilesync_start", mobilesync_start, m_imobiledeviceLib);
-    success &= loadFunction("mobilesync_finish", mobilesync_finish, m_imobiledeviceLib);
-    success &= loadFunction("mobilesync_get_all_records_from_device", mobilesync_get_all_records_from_device, m_imobiledeviceLib);
-    success &= loadFunction("mobilesync_receive_changes", mobilesync_receive_changes, m_imobiledeviceLib);
-    success &= loadFunction("mobilesync_acknowledge_changes_from_device", mobilesync_acknowledge_changes_from_device, m_imobiledeviceLib);
-    success &= loadFunction("mobilesync_anchors_new", mobilesync_anchors_new, m_imobiledeviceLib);
-    success &= loadFunction("mobilesync_anchors_free", mobilesync_anchors_free, m_imobiledeviceLib);
-    success &= loadFunction("mobilesync_cancel", mobilesync_cancel, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilesync_client_start_service", mobilesync_client_start_service, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilesync_client_new", mobilesync_client_new, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilesync_client_free", mobilesync_client_free, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilesync_receive", mobilesync_receive, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilesync_send", mobilesync_send, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilesync_start", mobilesync_start, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilesync_finish", mobilesync_finish, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilesync_get_all_records_from_device", mobilesync_get_all_records_from_device, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilesync_receive_changes", mobilesync_receive_changes, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilesync_acknowledge_changes_from_device", mobilesync_acknowledge_changes_from_device, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilesync_anchors_new", mobilesync_anchors_new, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilesync_anchors_free", mobilesync_anchors_free, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilesync_cancel", mobilesync_cancel, m_imobiledeviceLib);
     
     // 加载 mobilebackup2 函数
-    success &= loadFunction("mobilebackup2_client_new", mobilebackup2_client_new, m_imobiledeviceLib);
-    success &= loadFunction("mobilebackup2_client_start_service", mobilebackup2_client_start_service, m_imobiledeviceLib);
-    success &= loadFunction("mobilebackup2_client_free", mobilebackup2_client_free, m_imobiledeviceLib);
-    success &= loadFunction("mobilebackup2_send_message", mobilebackup2_send_message, m_imobiledeviceLib);
-    success &= loadFunction("mobilebackup2_receive_message", mobilebackup2_receive_message, m_imobiledeviceLib);
-    success &= loadFunction("mobilebackup2_send_raw", mobilebackup2_send_raw, m_imobiledeviceLib);
-    success &= loadFunction("mobilebackup2_receive_raw", mobilebackup2_receive_raw, m_imobiledeviceLib);
-    success &= loadFunction("mobilebackup2_version_exchange", mobilebackup2_version_exchange, m_imobiledeviceLib);
-    success &= loadFunction("mobilebackup2_send_request", mobilebackup2_send_request, m_imobiledeviceLib);
-    success &= loadFunction("mobilebackup2_send_status_response", mobilebackup2_send_status_response, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilebackup2_client_new", mobilebackup2_client_new, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilebackup2_client_start_service", mobilebackup2_client_start_service, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilebackup2_client_free", mobilebackup2_client_free, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilebackup2_send_message", mobilebackup2_send_message, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilebackup2_receive_message", mobilebackup2_receive_message, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilebackup2_send_raw", mobilebackup2_send_raw, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilebackup2_receive_raw", mobilebackup2_receive_raw, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilebackup2_version_exchange", mobilebackup2_version_exchange, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilebackup2_send_request", mobilebackup2_send_request, m_imobiledeviceLib);
+    success &= loadAndTrack("mobilebackup2_send_status_response", mobilebackup2_send_status_response, m_imobiledeviceLib);
+    
+    // 打印函数加载统计信息
+    qDebug() << "========== 函数加载统计 ==========";
+    qDebug() << "总函数数:" << totalFunctions;
+    qDebug() << "成功加载:" << successCount;
+    qDebug() << "加载失败:" << failedFunctions.size();
     
     if (!success) {
-        qWarning() << "部分函数加载失败";
+        qWarning() << "========== 加载失败的函数列表 ==========";
+        for (const QString& funcName : failedFunctions) {
+            qWarning() << "  -" << funcName;
+        }
+        qWarning() << "=====================================";
         cleanup();
         return false;
     }
@@ -326,8 +367,13 @@ void LibimobiledeviceDynamic::cleanup()
     idevice_device_list_free = nullptr;
     idevice_new = nullptr;
     idevice_free = nullptr;
-    idevice_event_subscribe = nullptr;
-    idevice_event_unsubscribe = nullptr;
+    
+    // v1.4.0+ API
+    idevice_events_subscribe = nullptr;
+    idevice_events_unsubscribe = nullptr;
+    idevice_get_device_list_extended = nullptr;
+    idevice_device_list_extended_free = nullptr;
+    idevice_new_with_options = nullptr;
     
     lockdownd_client_new_with_handshake = nullptr;
     lockdownd_client_free = nullptr;
@@ -357,7 +403,7 @@ void LibimobiledeviceDynamic::cleanup()
     plist_new_uint = nullptr;
     plist_new_date = nullptr;
     plist_to_xml = nullptr;
-    plist_to_xml_free = nullptr;
+    plist_mem_free = nullptr;
     
     instproxy_client_new = nullptr;
     instproxy_client_free = nullptr;

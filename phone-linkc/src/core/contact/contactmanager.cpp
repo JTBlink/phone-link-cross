@@ -713,8 +713,8 @@ int ContactManager::handleDownloadFilesRequest(mobilebackup2_client_t client, pl
                     }
                     
                     // 使用 DLL 的释放函数释放 XML 缓冲区，避免跨模块释放问题
-                    if (plist_xml && lib.plist_to_xml_free) {
-                        lib.plist_to_xml_free(plist_xml);
+                    if (plist_xml && lib.plist_mem_free) {
+                        lib.plist_mem_free(plist_xml);
                         plist_xml = nullptr;
                     }
                     

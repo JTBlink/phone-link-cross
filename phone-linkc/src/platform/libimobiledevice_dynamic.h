@@ -124,28 +124,82 @@ typedef idevice_error_t (*idevice_new_func)(idevice_t *device, const char *udid)
 typedef idevice_error_t (*idevice_free_func)(idevice_t device);
 
 /**
- * Register a callback function that will be called when device add/remove
+ * Subscribe a callback function that will be called when device add/remove
  * events occur.
  *
+ * @param context A pointer to a idevice_subscription_context_t that will be
+ *    set upon creation of the subscription. The returned context must be
+ *    passed to idevice_events_unsubscribe() to unsubscribe the callback.
  * @param callback Callback function to call.
  * @param user_data Application-specific data passed as parameter
  *   to the registered callback function.
  *
  * @return IDEVICE_E_SUCCESS on success or an error value when an error occurred.
  *
- * @原型 idevice_error_t idevice_event_subscribe(idevice_event_cb_t callback, void *user_data);
+ * @原型 idevice_error_t idevice_events_subscribe(idevice_subscription_context_t *context,
+ *                                                 idevice_event_cb_t callback,
+ *                                                 void *user_data);
  */
-typedef idevice_error_t (*idevice_event_subscribe_func)(idevice_event_cb_t callback, void *user_data);
+typedef idevice_error_t (*idevice_events_subscribe_func)(idevice_subscription_context_t *context,
+                                                          idevice_event_cb_t callback,
+                                                          void *user_data);
 
 /**
- * Release the event callback function that has been registered with
- *  idevice_event_subscribe().
+ * Unsubscribe the event callback function that has been registered with
+ * idevice_events_subscribe().
+ *
+ * @param context A valid context as returned from idevice_events_subscribe().
  *
  * @return IDEVICE_E_SUCCESS on success or an error value when an error occurred.
  *
- * @原型 idevice_error_t idevice_event_unsubscribe(void);
+ * @原型 idevice_error_t idevice_events_unsubscribe(idevice_subscription_context_t context);
  */
-typedef idevice_error_t (*idevice_event_unsubscribe_func)(void);
+typedef idevice_error_t (*idevice_events_unsubscribe_func)(idevice_subscription_context_t context);
+
+/**
+ * Get a list of currently available devices with extended information.
+ *
+ * @param devices List of idevice_info_t records with device information.
+ *   This list is terminated by a NULL pointer.
+ * @param count Number of devices included in the list.
+ *
+ * @return IDEVICE_E_SUCCESS on success or an error value when an error occurred.
+ *
+ * @原型 idevice_error_t idevice_get_device_list_extended(idevice_info_t **devices, int *count);
+ */
+typedef idevice_error_t (*idevice_get_device_list_extended_func)(idevice_info_t **devices, int *count);
+
+/**
+ * Free an extended device list retrieved through idevice_get_device_list_extended().
+ *
+ * @param devices Device list to free.
+ *
+ * @return IDEVICE_E_SUCCESS on success or an error value when an error occurred.
+ *
+ * @原型 idevice_error_t idevice_device_list_extended_free(idevice_info_t *devices);
+ */
+typedef idevice_error_t (*idevice_device_list_extended_free_func)(idevice_info_t *devices);
+
+/**
+ * Creates an idevice_t structure for the device specified by UDID,
+ *  if the device is available, with the given lookup options.
+ *
+ * @param device Upon calling this function, a pointer to a location of type
+ *   idevice_t. On successful return, this location will be populated.
+ * @param udid The UDID to match.
+ * @param options Specifies what connection types should be considered
+ *   when looking up devices. Accepts bitwise or'ed values of idevice_options.
+ *   If 0 (no option) is specified it will default to IDEVICE_LOOKUP_USBMUX.
+ *
+ * @return IDEVICE_E_SUCCESS if ok, otherwise an error code.
+ *
+ * @原型 idevice_error_t idevice_new_with_options(idevice_t *device,
+ *                                                const char *udid,
+ *                                                enum idevice_options options);
+ */
+typedef idevice_error_t (*idevice_new_with_options_func)(idevice_t *device,
+                                                          const char *udid,
+                                                          enum idevice_options options);
 
 /* ============================================================================
  * LibimobiledeviceDynamic 类
@@ -234,12 +288,20 @@ public:
      * 使用前请确保 isInitialized() 返回 true。
      * ======================================================================== */
     
-    idevice_get_device_list_func idevice_get_device_list;       ///< 获取设备列表
+    // 基础设备管理 API
+    idevice_get_device_list_func idevice_get_device_list;       ///< 获取设备列表（仅USB）
     idevice_device_list_free_func idevice_device_list_free;     ///< 释放设备列表
-    idevice_new_func idevice_new;                               ///< 创建设备句柄
+    idevice_new_func idevice_new;                               ///< 创建设备句柄（仅USB）
     idevice_free_func idevice_free;                             ///< 释放设备句柄
-    idevice_event_subscribe_func idevice_event_subscribe;       ///< 订阅设备事件
-    idevice_event_unsubscribe_func idevice_event_unsubscribe;   ///< 取消订阅事件
+    
+    // v1.4.0+ 事件 API
+    idevice_events_subscribe_func idevice_events_subscribe;     ///< 订阅设备事件
+    idevice_events_unsubscribe_func idevice_events_unsubscribe; ///< 取消订阅事件
+    
+    // v1.4.0+ 网络设备支持 API
+    idevice_get_device_list_extended_func idevice_get_device_list_extended;       ///< 获取扩展设备列表（含网络设备）
+    idevice_device_list_extended_free_func idevice_device_list_extended_free;     ///< 释放扩展设备列表
+    idevice_new_with_options_func idevice_new_with_options;                       ///< 使用选项创建设备句柄
     
     /* ========================================================================
      * lockdownd 服务函数指针
@@ -280,7 +342,7 @@ public:
     plist_new_uint_func plist_new_uint;               ///< 创建无符号整数
     plist_new_date_func plist_new_date;               ///< 创建日期
     plist_to_xml_func plist_to_xml;                   ///< 导出为 XML
-    plist_to_xml_free_func plist_to_xml_free;         ///< 释放 XML 缓冲区
+    plist_mem_free_func plist_mem_free;               ///< 释放 plist 分配的内存 (替代旧版 plist_to_xml_free)
     
     /* ========================================================================
      * installation_proxy 服务函数指针

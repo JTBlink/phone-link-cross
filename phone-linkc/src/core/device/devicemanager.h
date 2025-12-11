@@ -46,6 +46,7 @@ private:
     idevice_t m_device;
     lockdownd_client_t m_lockdown;
     bool m_eventSubscribed;
+    idevice_subscription_context_t m_subscriptionContext;  ///< v1.4.0+ 事件订阅上下文
     
     // 私有方法
     bool initializeConnection(const QString &udid);

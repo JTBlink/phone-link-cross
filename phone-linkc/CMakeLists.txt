@@ -313,11 +313,11 @@ if(WIN32)
     # 检查是否存在 thirdparty DLL 文件
     set(THIRDPARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libimobiledevice")
     
-    if(EXISTS "${THIRDPARTY_DIR}/imobiledevice.dll" AND EXISTS "${THIRDPARTY_DIR}/plist.dll")
-        message(STATUS "Windows 环境 - 启用 libimobiledevice DLL 动态加载方案")
+    if(EXISTS "${THIRDPARTY_DIR}/libimobiledevice-1.0.dll" AND EXISTS "${THIRDPARTY_DIR}/libplist-2.0.dll")
+        message(STATUS "Windows 环境 - 启用 libimobiledevice 1.4.0 DLL 动态加载方案")
         message(STATUS "DLL 路径: ${THIRDPARTY_DIR}")
-        message(STATUS "  - imobiledevice.dll: ${THIRDPARTY_DIR}/imobiledevice.dll")
-        message(STATUS "  - plist.dll: ${THIRDPARTY_DIR}/plist.dll")
+        message(STATUS "  - libimobiledevice-1.0.dll: ${THIRDPARTY_DIR}/libimobiledevice-1.0.dll")
+        message(STATUS "  - libplist-2.0.dll: ${THIRDPARTY_DIR}/libplist-2.0.dll")
         
         # 启用 libimobiledevice 支持（通过动态加载）
         set(LIBIMOBILEDEVICE_AVAILABLE TRUE)

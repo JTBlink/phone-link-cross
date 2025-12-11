@@ -2,6 +2,7 @@
 #include "../../platform/libimobiledevice_dynamic.h"
 #include <QDebug>
 #include <QFileInfo>
+#include <QFile>
 #include <QElapsedTimer>
 #include <QtConcurrent/QtConcurrent>
 
@@ -477,15 +478,229 @@ bool AppManager::uninstallApp(const QString &bundleId)
 
 bool AppManager::installApp(const QString &path)
 {
-    // 安装应用通常需要：
-    // 1. 将 .ipa 解压或直接传输到设备？
-    // 不，通常 instproxy_install 需要 path 指向设备上的文件 (AFC jail 中)。
-    // 所以流程是：
-    // 1. 连接 AFC。
-    // 2. 上传 .ipa 到设备的一个临时目录 (如 PublicStaging)。
-    // 3. 调用 instproxy_install 传入设备上的路径。
+    if (!m_connected || !m_instproxy) {
+        m_lastError = "未连接设备";
+        emit errorOccurred(m_lastError);
+        return false;
+    }
     
-    m_lastError = "安装功能尚未实现";
-    emit errorOccurred(m_lastError);
-    return false;
+    QFileInfo fileInfo(path);
+    if (!fileInfo.exists() || !fileInfo.isFile()) {
+        m_lastError = "文件不存在: " + path;
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+    
+    if (fileInfo.suffix().toLower() != "ipa") {
+        m_lastError = "只支持 .ipa 文件";
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+    
+    auto& lib = LibimobiledeviceDynamic::instance();
+    
+    emit progressUpdated("正在连接AFC服务...", 0);
+    
+    // 1. 启动AFC服务
+    lockdownd_service_descriptor_t afc_service = nullptr;
+    if (lib.lockdownd_start_service(static_cast<lockdownd_client_t>(m_lockdown),
+                                     "com.apple.afc", &afc_service) != LOCKDOWN_E_SUCCESS || !afc_service) {
+        m_lastError = "无法启动AFC服务";
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+    
+    // 2. 创建AFC客户端
+    afc_client_t afc = nullptr;
+    if (lib.afc_client_new(static_cast<idevice_t>(m_device), afc_service, &afc) != AFC_E_SUCCESS) {
+        m_lastError = "无法创建AFC客户端";
+        lib.lockdownd_service_descriptor_free(afc_service);
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+    lib.lockdownd_service_descriptor_free(afc_service);
+    
+    emit progressUpdated("正在准备上传目录...", 10);
+    
+    // 3. 创建上传目录（PublicStaging）
+    const char* staging_dir = "PublicStaging";
+    lib.afc_make_directory(afc, staging_dir);
+    
+    // 4. 构造设备上的目标路径
+    QString fileName = fileInfo.fileName();
+    QString devicePath = QString("%1/%2").arg(staging_dir).arg(fileName);
+    
+    emit progressUpdated("正在上传IPA文件...", 20);
+    
+    // 5. 打开本地文件
+    QFile localFile(path);
+    if (!localFile.open(QIODevice::ReadOnly)) {
+        m_lastError = "无法打开本地文件: " + path;
+        lib.afc_client_free(afc);
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+    
+    // 6. 在设备上创建文件
+    uint64_t afc_file = 0;
+    if (lib.afc_file_open(afc, devicePath.toUtf8().constData(), AFC_FOPEN_WRONLY, &afc_file) != AFC_E_SUCCESS) {
+        m_lastError = "无法在设备上创建文件";
+        localFile.close();
+        lib.afc_client_free(afc);
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+    
+    // 7. 分块上传文件
+    const int chunkSize = 8192; // 8KB每块
+    qint64 totalSize = localFile.size();
+    qint64 uploadedSize = 0;
+    
+    char buffer[chunkSize];
+    bool uploadSuccess = true;
+    
+    while (!localFile.atEnd()) {
+        qint64 bytesRead = localFile.read(buffer, chunkSize);
+        if (bytesRead <= 0) break;
+        
+        uint32_t bytesWritten = 0;
+        if (lib.afc_file_write(afc, afc_file, buffer, bytesRead, &bytesWritten) != AFC_E_SUCCESS) {
+            m_lastError = "文件上传失败";
+            uploadSuccess = false;
+            break;
+        }
+        
+        uploadedSize += bytesWritten;
+        
+        // 更新进度（20%-70%）
+        int progress = 20 + static_cast<int>((uploadedSize * 50.0) / totalSize);
+        emit progressUpdated(QString("正在上传: %1%").arg(progress - 20), progress);
+    }
+    
+    localFile.close();
+    lib.afc_file_close(afc, afc_file);
+    
+    if (!uploadSuccess) {
+        lib.afc_remove_path(afc, devicePath.toUtf8().constData());
+        lib.afc_client_free(afc);
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+    
+    emit progressUpdated("正在安装应用...", 70);
+    
+    // 8. 调用instproxy_install安装
+    QString installPath = QString("/") + devicePath;
+    
+    // 创建安装选项
+    plist_t client_opts = lib.plist_new_dict();
+    lib.plist_dict_set_item(client_opts, "PackageType", lib.plist_new_string("Developer"));
+    
+    // 安装应用（带进度回调）
+    struct InstallContext {
+        AppManager* manager;
+        QString* lastError;
+    };
+    
+    InstallContext context;
+    context.manager = this;
+    context.lastError = &m_lastError;
+    
+    auto status_callback = [](plist_t command, plist_t status, void* user_data) {
+        InstallContext* ctx = static_cast<InstallContext*>(user_data);
+        if (!status) return;
+        
+        auto& lib = LibimobiledeviceDynamic::instance();
+        
+        // 解析状态信息
+        plist_t status_node = lib.plist_dict_get_item(status, "Status");
+        if (status_node) {
+            const char* status_str = nullptr;
+            if (lib.plist_get_string_ptr) {
+                status_str = lib.plist_get_string_ptr(status_node, nullptr);
+            }
+            
+            if (status_str) {
+                QString statusMsg = QString::fromUtf8(status_str);
+                qDebug() << "安装状态:" << statusMsg;
+                
+                // 更新进度
+                if (statusMsg == "CreatingStagingDirectory") {
+                    emit ctx->manager->progressUpdated("正在创建临时目录...", 75);
+                } else if (statusMsg == "ExtractingPackage") {
+                    emit ctx->manager->progressUpdated("正在解压安装包...", 80);
+                } else if (statusMsg == "InspectingPackage") {
+                    emit ctx->manager->progressUpdated("正在检查安装包...", 85);
+                } else if (statusMsg == "TakingInstallLock") {
+                    emit ctx->manager->progressUpdated("正在准备安装...", 90);
+                } else if (statusMsg == "PreflightingApplication") {
+                    emit ctx->manager->progressUpdated("正在验证应用...", 92);
+                } else if (statusMsg == "InstallingEmbeddedProfile") {
+                    emit ctx->manager->progressUpdated("正在安装配置文件...", 94);
+                } else if (statusMsg == "VerifyingApplication") {
+                    emit ctx->manager->progressUpdated("正在验证应用签名...", 96);
+                } else if (statusMsg == "CreatingContainer") {
+                    emit ctx->manager->progressUpdated("正在创建应用容器...", 97);
+                } else if (statusMsg == "InstallingApplication") {
+                    emit ctx->manager->progressUpdated("正在安装应用...", 98);
+                } else if (statusMsg == "PostflightingApplication") {
+                    emit ctx->manager->progressUpdated("正在完成安装...", 99);
+                } else if (statusMsg == "Complete") {
+                    emit ctx->manager->progressUpdated("安装完成", 100);
+                }
+            }
+        }
+        
+        // 检查错误
+        plist_t error_node = lib.plist_dict_get_item(status, "Error");
+        if (error_node) {
+            const char* error_str = nullptr;
+            if (lib.plist_get_string_ptr) {
+                error_str = lib.plist_get_string_ptr(error_node, nullptr);
+            }
+            
+            if (error_str) {
+                *ctx->lastError = QString("安装失败: %1").arg(QString::fromUtf8(error_str));
+                qWarning() << *ctx->lastError;
+            }
+        }
+        
+        // 检查错误描述
+        plist_t error_desc = lib.plist_dict_get_item(status, "ErrorDescription");
+        if (error_desc) {
+            const char* desc_str = nullptr;
+            if (lib.plist_get_string_ptr) {
+                desc_str = lib.plist_get_string_ptr(error_desc, nullptr);
+            }
+            
+            if (desc_str) {
+                *ctx->lastError += QString(" - %1").arg(QString::fromUtf8(desc_str));
+            }
+        }
+    };
+    
+    instproxy_error_t install_err = lib.instproxy_install(
+        static_cast<instproxy_client_t>(m_instproxy),
+        installPath.toUtf8().constData(),
+        client_opts,
+        status_callback,
+        &context
+    );
+    
+    lib.plist_free(client_opts);
+    
+    // 9. 清理：删除临时文件
+    lib.afc_remove_path(afc, devicePath.toUtf8().constData());
+    lib.afc_client_free(afc);
+    
+    if (install_err != INSTPROXY_E_SUCCESS) {
+        if (m_lastError.isEmpty()) {
+            m_lastError = QString("安装失败，错误代码: %1").arg(install_err);
+        }
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+    
+    emit progressUpdated("安装成功", 100);
+    return true;
 }

@@ -31,6 +31,7 @@ extern "C" {
 #include <libimobiledevice/libimobiledevice.h>
 #include <libimobiledevice/lockdown.h>
 
+/** Service identifier passed to lockdownd_start_service() to start the mobilebackup2 service */
 #define MOBILEBACKUP2_SERVICE_NAME "com.apple.mobilebackup2"
 
 /** Error Codes */
@@ -47,7 +48,7 @@ typedef enum {
 	MOBILEBACKUP2_E_UNKNOWN_ERROR     = -256
 } mobilebackup2_error_t;
 
-typedef struct mobilebackup2_client_private mobilebackup2_client_private;
+typedef struct mobilebackup2_client_private mobilebackup2_client_private; /**< \private */
 typedef mobilebackup2_client_private *mobilebackup2_client_t; /**< The client handle. */
 
 
@@ -63,7 +64,7 @@ typedef mobilebackup2_client_private *mobilebackup2_client_t; /**< The client ha
  *     if one or more parameter is invalid, or MOBILEBACKUP2_E_BAD_VERSION
  *     if the mobilebackup2 version on the device is newer.
  */
-LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_client_new(idevice_t device, lockdownd_service_descriptor_t service, mobilebackup2_client_t * client);
+LIBIMOBILEDEVICE_API mobilebackup2_error_t mobilebackup2_client_new(idevice_t device, lockdownd_service_descriptor_t service, mobilebackup2_client_t * client);
 
 /**
  * Starts a new mobilebackup2 service on the specified device and connects to it.
@@ -78,7 +79,7 @@ LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_client_new(idevice_
  * @return MOBILEBACKUP2_E_SUCCESS on success, or an MOBILEBACKUP2_E_* error
  *     code otherwise.
  */
-LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_client_start_service(idevice_t device, mobilebackup2_client_t* client, const char* label);
+LIBIMOBILEDEVICE_API mobilebackup2_error_t mobilebackup2_client_start_service(idevice_t device, mobilebackup2_client_t* client, const char* label);
 
 /**
  * Disconnects a mobilebackup2 client from the device and frees up the
@@ -89,7 +90,7 @@ LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_client_start_servic
  * @return MOBILEBACKUP2_E_SUCCESS on success, or MOBILEBACKUP2_E_INVALID_ARG
  *     if client is NULL.
  */
-LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_client_free(mobilebackup2_client_t client);
+LIBIMOBILEDEVICE_API mobilebackup2_error_t mobilebackup2_client_free(mobilebackup2_client_t client);
 
 
 /**
@@ -104,7 +105,7 @@ LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_client_free(mobileb
  *     will be inserted into this plist before sending it. This parameter
  *     can be NULL if message is not NULL.
  */
-LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_send_message(mobilebackup2_client_t client, const char *message, plist_t options);
+LIBIMOBILEDEVICE_API mobilebackup2_error_t mobilebackup2_send_message(mobilebackup2_client_t client, const char *message, plist_t options);
 
 /**
  * Receives a DL* message plist from the device.
@@ -124,7 +125,7 @@ LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_send_message(mobile
  *    or is not a DL* message plist, or MOBILEBACKUP2_E_MUX_ERROR if
  *    receiving from the device failed.
  */
-LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_receive_message(mobilebackup2_client_t client, plist_t *msg_plist, char **dlmessage);
+LIBIMOBILEDEVICE_API mobilebackup2_error_t mobilebackup2_receive_message(mobilebackup2_client_t client, plist_t *msg_plist, char **dlmessage);
 
 /**
  * Send binary data to the device.
@@ -142,7 +143,7 @@ LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_receive_message(mob
  *     MOBILEBACKUP2_E_INVALID_ARG if one of the parameters is invalid,
  *     or MOBILEBACKUP2_E_MUX_ERROR if sending of the data failed.
  */
-LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_send_raw(mobilebackup2_client_t client, const char *data, uint32_t length, uint32_t *bytes);
+LIBIMOBILEDEVICE_API mobilebackup2_error_t mobilebackup2_send_raw(mobilebackup2_client_t client, const char *data, uint32_t length, uint32_t *bytes);
 
 /**
  * Receive binary from the device.
@@ -156,13 +157,13 @@ LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_send_raw(mobileback
  * @param data Pointer to a buffer that will be filled with the received data.
  * @param length Number of bytes to receive. The data buffer needs to be large
  *     enough to store this amount of data.
- * @paran bytes Number of bytes actually received.
+ * @param bytes Number of bytes actually received.
  *
  * @return MOBILEBACKUP2_E_SUCCESS if any or no data was received,
  *     MOBILEBACKUP2_E_INVALID_ARG if one of the parameters is invalid,
  *     or MOBILEBACKUP2_E_MUX_ERROR if receiving the data failed.
  */
-LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_receive_raw(mobilebackup2_client_t client, char *data, uint32_t length, uint32_t *bytes);
+LIBIMOBILEDEVICE_API mobilebackup2_error_t mobilebackup2_receive_raw(mobilebackup2_client_t client, char *data, uint32_t length, uint32_t *bytes);
 
 /**
  * Performs the mobilebackup2 protocol version exchange.
@@ -175,7 +176,7 @@ LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_receive_raw(mobileb
  * @return MOBILEBACKUP2_E_SUCCESS on success, or a MOBILEBACKUP2_E_* error
  *     code otherwise.
  */
-LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_version_exchange(mobilebackup2_client_t client, double local_versions[], char count, double *remote_version);
+LIBIMOBILEDEVICE_API mobilebackup2_error_t mobilebackup2_version_exchange(mobilebackup2_client_t client, double local_versions[], char count, double *remote_version);
 
 /**
  * Send a request to the connected mobilebackup2 service.
@@ -190,7 +191,7 @@ LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_version_exchange(mo
  * @return MOBILEBACKUP2_E_SUCCESS if the request was successfully sent,
  *     or a MOBILEBACKUP2_E_* error value otherwise.
  */
-LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_send_request(mobilebackup2_client_t client, const char *request, const char *target_identifier, const char *source_identifier, plist_t options);
+LIBIMOBILEDEVICE_API mobilebackup2_error_t mobilebackup2_send_request(mobilebackup2_client_t client, const char *request, const char *target_identifier, const char *source_identifier, plist_t options);
 
 /**
  * Sends a DLMessageStatusResponse to the device.
@@ -204,7 +205,7 @@ LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_send_request(mobile
  * @return MOBILEBACKUP2_E_SUCCESS on success, MOBILEBACKUP2_E_INVALID_ARG
  *     if client is invalid, or another MOBILEBACKUP2_E_* otherwise.
  */
-LIBIMOBILEDEVICE_API_MSC mobilebackup2_error_t mobilebackup2_send_status_response(mobilebackup2_client_t client, int status_code, const char *status1, plist_t status2);
+LIBIMOBILEDEVICE_API mobilebackup2_error_t mobilebackup2_send_status_response(mobilebackup2_client_t client, int status_code, const char *status1, plist_t status2);
 
 #ifdef __cplusplus
 }

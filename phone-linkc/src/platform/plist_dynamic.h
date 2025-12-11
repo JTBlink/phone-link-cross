@@ -264,12 +264,20 @@ typedef plist_t (*plist_new_date_func)(int32_t sec, int32_t usec);
 typedef void (*plist_to_xml_func)(plist_t plist, char **plist_xml, uint32_t * length);
 
 /**
- * Frees the memory allocated by plist_to_xml().
+ * Free memory allocated by relevant libplist API calls:
+ * - plist_to_xml()
+ * - plist_to_bin()
+ * - plist_get_key_val()
+ * - plist_get_string_val()
+ * - plist_get_data_val()
  *
- * @param plist_xml The buffer allocated by plist_to_xml().
+ * @param ptr pointer to the memory to free
  *
- * @原型 void plist_to_xml_free(char *plist_xml);
+ * @note Do not use this function to free plist_t nodes, use plist_free() instead.
+ * @note 在新版本的 libplist (v2.3.0+) 中，plist_to_xml_free() 已被 plist_mem_free() 取代
+ *
+ * @原型 void plist_mem_free(void* ptr);
  */
-typedef void (*plist_to_xml_free_func)(char *plist_xml);
+typedef void (*plist_mem_free_func)(void* ptr);
 
 #endif // PLIST_DYNAMIC_H

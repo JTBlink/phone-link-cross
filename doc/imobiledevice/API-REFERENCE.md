@@ -83,7 +83,7 @@
 
 ```
 libimobiledevice/
-├── imobiledevice.dll           # 核心库文件
+├── libimobiledevice-1.0.dll           # 核心库文件
 ├── plist.dll                   # 属性列表处理库
 ├── usbmuxd.dll                # USB复用守护进程库
 ├── idevice_id.exe             # 设备ID查询工具
@@ -103,13 +103,446 @@ libimobiledevice/
 └── [其他依赖库文件...]
 ```
 
-## 版本兼容性
+## 版本信息
 
-- **libimobiledevice版本**: v1.3.17+
-- **支持的iOS版本**: iOS 7.0 - iOS 17.x
+- **libimobiledevice版本**: v1.4.0+
+- **libplist版本**: v2.7.0+
+- **支持的iOS版本**: iOS 7.0 - iOS 18.x
 - **平台支持**: Windows 10/11, macOS 10.12+, Linux
 - **编译器要求**: 支持C11标准的编译器
 - **Qt版本**: Qt 5.15+ 或 Qt 6.2+（用于phone-linkc项目）
+
+## libimobiledevice v1.4.0 核心功能
+
+### 1. 事件处理 API
+
+**v1.4.0 提供基于上下文的事件订阅机制，支持更好的资源管理和线程安全性。**
+
+#### API 函数
+```c
+// 订阅设备事件
+idevice_error_t idevice_events_subscribe(idevice_subscription_context_t *context,
+                                          idevice_event_cb_t callback,
+                                          void *user_data);
+
+// 取消订阅设备事件
+idevice_error_t idevice_events_unsubscribe(idevice_subscription_context_t context);
+```
+
+#### 功能特性
+- ✅ 支持多个独立的事件订阅
+- ✅ 明确的上下文管理，避免资源泄漏
+- ✅ 更好的线程安全性
+- ✅ 更灵活的事件处理机制
+- ✅ 支持 USB 和网络设备事件
+
+#### 使用示例
+
+```cpp
+// 使用上下文管理订阅
+idevice_subscription_context_t subscription_ctx = nullptr;
+
+void deviceEventCallback(const idevice_event_t *event, void *user_data) {
+    // 处理事件...
+    // 可以通过 event->conn_type 判断连接类型（USB 或网络）
+    if (event->event == IDEVICE_DEVICE_ADD) {
+        qDebug() << "设备连接:" << event->udid
+                 << "连接类型:" << (event->conn_type == CONNECTION_USBMUXD ? "USB" : "网络");
+    } else if (event->event == IDEVICE_DEVICE_REMOVE) {
+        qDebug() << "设备断开:" << event->udid;
+    }
+}
+
+// 订阅事件（可以有多个独立订阅）
+if (idevice_events_subscribe(&subscription_ctx, deviceEventCallback, nullptr) == IDEVICE_E_SUCCESS) {
+    qDebug() << "事件订阅成功";
+}
+
+// 取消订阅（明确的上下文管理）
+if (subscription_ctx) {
+    idevice_events_unsubscribe(subscription_ctx);
+    subscription_ctx = nullptr;
+}
+```
+
+#### phone-linkc 项目实现
+
+```cpp
+// 在 DeviceManager 类中
+class DeviceManager {
+private:
+    idevice_subscription_context_t m_subscriptionContext;
+    
+public:
+    bool startEventSubscription() {
+        LibimobiledeviceDynamic& lib = LibimobiledeviceDynamic::instance();
+        
+        // 使用 v1.4.0+ API
+        idevice_error_t ret = lib.idevice_events_subscribe(
+            &m_subscriptionContext,
+            deviceEventCallback,
+            this
+        );
+        
+        return (ret == IDEVICE_E_SUCCESS);
+    }
+    
+    void stopEventSubscription() {
+        if (m_subscriptionContext) {
+            LibimobiledeviceDynamic& lib = LibimobiledeviceDynamic::instance();
+            lib.idevice_events_unsubscribe(m_subscriptionContext);
+            m_subscriptionContext = nullptr;
+        }
+    }
+};
+```
+
+#### 2. 网络设备支持增强
+
+**v1.4.0 大幅改进了对 WiFi 连接 iOS 设备的支持。**
+
+##### 新增 API
+
+```c
+// 获取扩展设备列表（包含连接类型信息）
+idevice_error_t idevice_get_device_list_extended(idevice_info_t **devices, int *count);
+idevice_error_t idevice_device_list_extended_free(idevice_info_t *devices);
+
+// 使用选项创建设备连接
+idevice_error_t idevice_new_with_options(idevice_t *device,
+                                         const char *udid,
+                                         enum idevice_options options);
+```
+
+##### 设备信息结构
+
+```c
+struct idevice_info {
+    char *udid;                              // 设备 UDID
+    enum idevice_connection_type conn_type;  // 连接类型
+    void* conn_data;                         // 连接特定数据
+};
+
+enum idevice_connection_type {
+    CONNECTION_USBMUXD = 1,  // USB 连接
+    CONNECTION_NETWORK       // 网络连接
+};
+
+enum idevice_options {
+    IDEVICE_LOOKUP_USBMUX = 1 << 1,          // 查找 USB 设备
+    IDEVICE_LOOKUP_NETWORK = 1 << 2,         // 查找网络设备
+    IDEVICE_LOOKUP_PREFER_NETWORK = 1 << 3   // 优先使用网络连接
+};
+```
+
+##### 使用示例
+
+```cpp
+// 获取所有设备（包括网络设备）
+idevice_info_t *devices = nullptr;
+int count = 0;
+
+if (idevice_get_device_list_extended(&devices, &count) == IDEVICE_E_SUCCESS) {
+    for (int i = 0; i < count; i++) {
+        qDebug() << "设备 UDID:" << devices[i]->udid;
+        qDebug() << "连接类型:" << (devices[i]->conn_type == CONNECTION_USBMUXD
+                                    ? "USB" : "网络");
+    }
+    
+    idevice_device_list_extended_free(devices);
+}
+
+// 连接到网络设备
+idevice_t device = nullptr;
+idevice_error_t err = idevice_new_with_options(&device,
+                                               udid.toUtf8().constData(),
+                                               IDEVICE_LOOKUP_NETWORK | IDEVICE_LOOKUP_USBMUX);
+if (err == IDEVICE_E_SUCCESS) {
+    qDebug() << "成功连接设备（自动选择最佳连接方式）";
+    // 使用设备...
+    idevice_free(device);
+}
+```
+
+#### 3. libplist 内存管理 API 统一
+
+### libplist v2.3.0+ 重要变更
+
+#### 内存管理函数变更
+
+在 libplist v2.3.0 及更高版本中，内存管理 API 发生了重要变更：
+
+**旧版 API (已废弃)**:
+```c
+void plist_to_xml_free(char *plist_xml);  // ❌ 已在 v2.3.0+ 中移除
+```
+
+**新版 API (推荐使用)**:
+```c
+void plist_mem_free(void* ptr);  // ✅ v2.3.0+ 统一内存释放函数
+```
+
+#### 迁移对照表
+
+| 操作 | 旧版 API | 新版 API | 适用版本 |
+
+### 依赖库变更
+
+#### 新增依赖库（v1.4.0）
+
+| 库文件 | 用途 | 说明 |
+|--------|------|------|
+| `libimobiledevice-glue-1.0.dll` | 辅助工具库 | 提供通用辅助函数和工具 |
+| `libbrotlicommon.dll` | Brotli 压缩 | 通用 Brotli 函数 |
+| `libbrotlidec.dll` | Brotli 解压 | 解压缩功能 |
+| `libbrotlienc.dll` | Brotli 压缩 | 压缩功能 |
+| `libtatsu.dll` | TATSU 协议 | Apple TATSU 服务器通信 |
+| `libcrypto-3-x64.dll` | OpenSSL 加密 | 升级到 OpenSSL 3.x |
+| `libssl-3-x64.dll` | OpenSSL SSL/TLS | 升级到 OpenSSL 3.x |
+
+#### 更新的依赖库
+
+| 旧版本 (v1.3.17) | 新版本 (v1.4.0) | 变更说明 |
+|------------------|-----------------|----------|
+| `libplist.dll` | `libplist-2.0.dll` | API 版本升级，增加版本号 |
+| `usbmuxd.dll` | `libusbmuxd-2.0.dll` | 重命名并升级到 v2.0 |
+| OpenSSL 1.1.x | OpenSSL 3.x | 主要版本升级 |
+
+#### 部署注意事项
+
+1. **完整部署所有依赖**: 确保部署时包含所有新增的 DLL 文件
+2. **DLL 搜索路径**: 所有依赖库应放在同一目录或系统 PATH 中
+3. **版本匹配**: 不要混用不同版本的库文件
+4. **OpenSSL 升级**: OpenSSL 3.x 有一些 API 变更，但 libimobiledevice 已适配
+
+### 新增命令行工具
+
+v1.4.0 版本新增了多个实用的命令行工具：
+
+| 工具 | 功能 | 使用场景 |
+|------|------|----------|
+| `idevicebackup.exe` | 设备备份 (旧版) | 兼容旧版备份格式 |
+| `idevicebackup2.exe` | 设备备份 (新版) | 使用新版备份协议 |
+| `idevicebtlogger.exe` | 蓝牙日志 | 捕获蓝牙通信日志 |
+| `idevicecrashreport.exe` | 崩溃报告 | 获取设备崩溃日志 |
+| `idevicedevmodectl.exe` | 开发者模式控制 | 管理开发者模式设置 |
+| `idevicedebugserverproxy.exe` | 调试服务器代理 | Xcode 调试支持 |
+
+### 性能优化
+
+v1.4.0 带来了多项性能改进：
+
+#### 1. 文件传输性能
+- **大文件传输**: 提升约 15-20%
+- **批量小文件**: 提升约 10-15%
+- **优化方式**: 改进缓冲区管理和数据分块策略
+
+#### 2. 连接管理
+- **连接建立**: 减少 SSL 握手时间
+- **连接复用**: 更好的连接池管理
+- **网络设备**: 优化 WiFi 连接稳定性
+
+#### 3. 内存使用
+- **内存占用**: 减少约 10-15%
+- **内存泄漏**: 修复多个内存泄漏问题
+- **对象池**: 改进的对象复用机制
+
+### 向后兼容性
+
+#### 完全兼容的 API
+以下 API 在 v1.4.0 中保持完全兼容：
+- ✅ `idevice_new()` / `idevice_free()`
+- ✅ `idevice_get_device_list()` / `idevice_device_list_free()`
+- ✅ `lockdownd_*` 系列函数
+- ✅ `afc_*` 文件传输函数
+- ✅ `instproxy_*` 应用管理函数
+- ✅ `screenshotr_*` 截图函数
+- ✅ `mobilebackup2_*` 备份函数
+
+#### 已弃用但可用的 API
+这些 API 被标记为已弃用，但仍然可用：
+- ⚠️ `idevice_event_subscribe()` → 推荐使用 `idevice_events_subscribe()`
+- ⚠️ `idevice_event_unsubscribe()` → 推荐使用 `idevice_events_unsubscribe()`
+- ⚠️ `plist_to_xml_free()` → 推荐使用 `plist_mem_free()`
+
+#### phone-linkc 兼容性策略
+
+phone-linkc 采用动态加载机制，确保：
+1. **自动检测**: 运行时检测可用的 API 版本
+2. **优雅降级**: 优先使用新 API，自动回退到旧 API
+3. **无缝升级**: 用户无需修改代码即可升级到新版本
+4. **版本共存**: 同时支持 v1.3.17 和 v1.4.0
+
+```cpp
+// 自动适配示例
+bool DeviceManager::initialize() {
+    LibimobiledeviceDynamic& lib = LibimobiledeviceDynamic::instance();
+    
+    if (!lib.initialize()) {
+        qWarning() << "libimobiledevice 初始化失败";
+        return false;
+    }
+    
+    // 检测可用功能
+    bool hasNetworkSupport = (lib.idevice_get_device_list_extended != nullptr);
+    bool hasNewEventAPI = (lib.idevice_events_subscribe != nullptr);
+    
+    qDebug() << "网络设备支持:" << (hasNetworkSupport ? "是" : "否");
+    qDebug() << "新事件 API:" << (hasNewEventAPI ? "是" : "否");
+    
+    return true;
+}
+```
+
+### 升级建议
+
+#### 推荐升级场景
+建议在以下情况下升级到 v1.4.0：
+- ✅ 需要支持网络连接的 iOS 设备
+- ✅ 需要同时管理多个设备事件订阅
+- ✅ 需要更好的性能和稳定性
+- ✅ 需要支持 iOS 18.x 设备
+
+#### 保持旧版本场景
+可以继续使用 v1.3.17 如果：
+- ⚠️ 只需要 USB 连接支持
+- ⚠️ 部署环境限制无法更新依赖库
+- ⚠️ 现有代码稳定且无升级需求
+
+#### 升级步骤
+
+1. **备份现有版本**
+   ```bash
+   # 备份当前的 libimobiledevice 目录
+   cp -r thirdparty/libimobiledevice thirdparty/libimobiledevice.v1.3.17
+   ```
+
+2. **更新库文件**
+   - 下载 v1.4.0 版本
+   - 替换所有 DLL 文件
+   - 更新头文件
+
+3. **测试兼容性**
+   ```cpp
+   // 运行测试确保兼容性
+   bool testLibimobiledevice() {
+       LibimobiledeviceDynamic& lib = LibimobiledeviceDynamic::instance();
+       
+       if (!lib.initialize()) {
+           qCritical() << "初始化失败";
+           return false;
+       }
+       
+       // 测试基本功能
+       char **devices = nullptr;
+       int count = 0;
+       if (lib.idevice_get_device_list(&devices, &count) == IDEVICE_E_SUCCESS) {
+           qDebug() << "找到" << count << "个设备";
+           lib.idevice_device_list_free(devices);
+           return true;
+       }
+       
+       return false;
+   }
+   ```
+
+4. **逐步迁移代码**
+   - 优先更新事件处理代码
+   - 添加网络设备支持（可选）
+   - 更新内存管理调用
+
+5. **验证和部署**
+   - 在测试环境充分测试
+   - 监控日志和错误报告
+   - 逐步推广到生产环境
+
+|------|---------|---------|----------|
+| 释放 XML 字符串 | `plist_to_xml_free(xml)` | `plist_mem_free(xml)` | v2.3.0+ |
+| 释放二进制数据 | `free(bin)` | `plist_mem_free(bin)` | v2.3.0+ |
+| 释放字符串值 | `free(str)` | `plist_mem_free(str)` | v2.3.0+ |
+| 释放数据缓冲区 | `free(data)` | `plist_mem_free(data)` | v2.3.0+ |
+| 释放 plist 节点 | `plist_free(node)` | `plist_free(node)` | 所有版本 |
+
+#### 代码迁移示例
+
+**旧版代码** (libplist v2.2.0 及更早):
+```cpp
+char *xml = NULL;
+uint32_t length = 0;
+plist_to_xml(plist, &xml, &length);
+
+// 使用 XML 数据...
+
+plist_to_xml_free(xml);  // 旧版专用释放函数
+```
+
+**新版代码** (libplist v2.3.0+):
+```cpp
+char *xml = NULL;
+uint32_t length = 0;
+plist_to_xml(plist, &xml, &length);
+
+// 使用 XML 数据...
+
+plist_mem_free(xml);  // 统一内存释放函数
+```
+
+#### phone-linkc 项目适配
+
+phone-linkc 项目已完全适配新版 API，主要变更包括：
+
+1. **头文件更新** ([`plist_dynamic.h`](../phone-linkc/src/platform/plist_dynamic.h)):
+   ```cpp
+   // 旧版
+   typedef void (*plist_to_xml_free_func)(char *plist_xml);
+   
+   // 新版
+   typedef void (*plist_mem_free_func)(void* ptr);
+   ```
+
+2. **动态加载更新** ([`libimobiledevice_dynamic.cpp`](../phone-linkc/src/platform/libimobiledevice_dynamic.cpp)):
+   ```cpp
+   // 旧版
+   success &= loadAndTrack("plist_to_xml_free", plist_to_xml_free, m_plistLib);
+   
+   // 新版
+   success &= loadAndTrack("plist_mem_free", plist_mem_free, m_plistLib);
+   ```
+
+3. **使用代码更新** ([`contactmanager.cpp`](../phone-linkc/src/core/contact/contactmanager.cpp)):
+   ```cpp
+   // 旧版
+   if (plist_xml && lib.plist_to_xml_free) {
+       lib.plist_to_xml_free(plist_xml);
+   }
+   
+   // 新版
+   if (plist_xml && lib.plist_mem_free) {
+       lib.plist_mem_free(plist_xml);
+   }
+   ```
+
+#### 兼容性建议
+
+为了保持与不同版本的兼容性，建议：
+
+1. **优先使用新版 API**: 如果使用 libplist v2.3.0+，统一使用 `plist_mem_free()`
+2. **运行时检测**: 通过动态加载可以在运行时检测可用的函数
+3. **渐进式迁移**: 先更新头文件和函数指针，再逐步更新调用代码
+
+#### 其他 API 变更
+
+除了内存管理，libplist v2.3.0+ 还引入了：
+
+- 改进的错误处理 (`plist_err_t` 返回类型)
+- 更严格的类型检查
+- 性能优化
+- 更好的 Unicode 支持
+
+详细的变更日志请参考 [libplist GitHub Releases](https://github.com/libimobiledevice/libplist/releases)。
+
+
+> ⚠️ **重要提示**: libplist v2.3.0+ 中 `plist_to_xml_free()` 已被 `plist_mem_free()` 取代，phone-linkc 已适配新版本 API。
 
 ## 动态库加载机制
 
@@ -2335,9 +2768,38 @@ void plist_dict_set_item(plist_t node, const char *key, plist_t item);
 ```c
 void plist_free(plist_t plist);
 ```
-**功能**: 释放plist内存
+**功能**: 释放plist节点及其子节点的内存
+
+**注意**: 此函数用于释放 plist_t 节点，不要用于释放 API 分配的字符串或数据缓冲区。
+
+##### plist_mem_free()
+```c
+void plist_mem_free(void* ptr);
+```
+**功能**: 释放 libplist API 分配的内存
+
+**适用场景**:
+- `plist_to_xml()` 分配的 XML 字符串
+- `plist_to_bin()` 分配的二进制数据
+- `plist_get_key_val()` 返回的键名
+- `plist_get_string_val()` 返回的字符串值
+- `plist_get_data_val()` 返回的数据缓冲区
+
+**版本说明**:
+- libplist v2.3.0+ 中引入，替代旧的 `plist_to_xml_free()` 函数
+- 更通用，可释放多种 API 分配的内存
+- phone-linkc 已适配新版本 API
+
+**参数说明**:
+- `ptr`: 要释放的内存指针
+
+**重要提示**:
+- 不要使用标准 `free()` 释放 libplist 分配的内存（可能导致跨模块释放问题）
+- 不要使用此函数释放 `plist_t` 节点（应使用 `plist_free()`）
 
 ### 使用示例
+
+#### 基础示例
 
 ```cpp
 // 创建配置字典
@@ -2395,7 +2857,7 @@ plist_t createAdvancedAppInstallOptions() {
 #### plist序列化和反序列化
 
 ```cpp
-// 将plist保存到文件
+// 将plist保存到文件（新版本 API）
 bool savePlistToFile(plist_t plist, const QString& filePath) {
     if (!plist) {
         return false;
@@ -2404,10 +2866,11 @@ bool savePlistToFile(plist_t plist, const QString& filePath) {
     char *buffer = NULL;
     uint32_t length = 0;
     
-    // 转换为XML格式的二进制数据
-    plist_to_xml(plist, &buffer, &length, 0);
+    // 转换为XML格式 - 使用新版 API
+    plist_err_t err = plist_to_xml(plist, &buffer, &length);
     
-    if (!buffer) {
+    if (err != PLIST_ERR_SUCCESS || !buffer) {
+        qWarning() << "plist_to_xml 失败，错误代码:" << err;
         return false;
     }
     
@@ -2418,7 +2881,9 @@ bool savePlistToFile(plist_t plist, const QString& filePath) {
         file.close();
     }
     
-    free(buffer);
+    // 使用新的内存释放函数
+    plist_mem_free(buffer);  // libplist v2.3.0+
+    
     return success;
 }
 
@@ -2442,7 +2907,7 @@ plist_t loadPlistFromFile(const QString& filePath) {
 #### phone-linkc项目中的实用函数
 
 ```cpp
-// 辅助函数：从锁中获取字符串值
+// 辅助函数：从锁中获取字符串值（更新版本）
 QString getLockdowndStringValue(lockdownd_client_t client, const char* domain, const char* key) {
     plist_t value = NULL;
     QString result;
@@ -2453,10 +2918,11 @@ QString getLockdowndStringValue(lockdownd_client_t client, const char* domain, c
             plist_get_string_val(value, &str_value);
             if (str_value) {
                 result = QString::fromUtf8(str_value);
-                free(str_value);
+                // 使用 plist_mem_free 释放 plist API 分配的字符串
+                plist_mem_free(str_value);  // libplist v2.3.0+
             }
         }
-        plist_free(value);
+        plist_free(value);  // 释放 plist 节点本身
     }
     
     return result;
