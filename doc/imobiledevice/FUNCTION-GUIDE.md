@@ -1,8 +1,25 @@
 # libimobiledevice 功能使用指南
 
+> **版本**: libimobiledevice v1.4.0+ | 最后更新: 2025-12-11
+
 ## 概述
 
-本文档提供libimobiledevice在phone-link-cross项目中的具体功能实现指南，包括完整的代码示例、最佳实践和常见问题解决方案。
+本文档提供libimobiledevice v1.4.0+在phone-link-cross项目中的具体功能实现指南，包括完整的代码示例、最佳实践和常见问题解决方案。
+
+### v1.4.0 主要更新
+
+- ✅ **新增事件订阅API**: `idevice_events_subscribe()` / `idevice_events_unsubscribe()` 替代旧版API
+- ✅ **网络设备支持**: 支持通过WiFi连接的iOS设备，新增 `idevice_get_device_list_extended()` 和 `idevice_new_with_options()`
+- ✅ **统一内存管理**: plist相关内存使用 `plist_mem_free()` 统一释放，替代 `plist_to_xml_free()` 等专用函数
+- ✅ **新增依赖库**: libimobiledevice-glue、libtatsu、Brotli压缩库、OpenSSL 3.x等
+- ✅ **性能优化**: 文件传输提升15-20%，优化连接管理和内存使用
+- ✅ **向后兼容**: 保持与v1.3.17的API兼容性，支持优雅降级
+
+### 重要提示
+
+- 📌 本文档所有代码示例均基于 **libimobiledevice v1.4.0+**
+- 📌 如使用旧版本(v1.3.17)，部分新API可能不可用，需回退到旧版API
+- 📌 phone-linkc项目采用动态加载机制，可自动适配不同版本
 
 ## 快速开始
 
@@ -17,12 +34,11 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
-#include <QTimer>
 #include <QThread>
 #include <QMutex>
 #include <QImage>
 
-// libimobiledevice 头文件
+// libimobiledevice v1.4.0+ 头文件
 extern "C" {
 #include "libimobiledevice/libimobiledevice.h"
 #include "libimobiledevice/lockdown.h"
@@ -30,6 +46,8 @@ extern "C" {
 #include "libimobiledevice/installation_proxy.h"
 #include "libimobiledevice/afc.h"
 #include "libimobiledevice/syslog_relay.h"
+#include "libimobiledevice/mobilebackup2.h"
+#include "libimobiledevice/notification_proxy.h"
 }
 
 class DeviceManager : public QObject {
@@ -56,25 +74,29 @@ public:
     void startScreenMirroring();
     void stopScreenMirroring();
     
+    // v1.4.0+ 事件订阅
+    void startEventSubscription();
+    void stopEventSubscription();
+    
 signals:
     void deviceConnected(const QString& udid);
     void deviceDisconnected(const QString& udid);
     void screenshotReady(const QImage& image);
     void errorOccurred(const QString& message);
-
-private slots:
-    void checkDeviceStatus();
     
 private:
     idevice_t device_;
     lockdownd_client_t lockdown_;
-    QTimer *deviceCheckTimer_;
+    idevice_subscription_context_t subscriptionContext_;  // v1.4.0+ 事件订阅上下文
     QMutex deviceMutex_;
     QString currentUdid_;
     
     bool initializeDevice(const QString& udid);
     void cleanupDevice();
     QString getErrorMessage(int errorCode);
+    
+    // v1.4.0+ 事件回调
+    static void deviceEventCallback(const idevice_event_t *event, void *user_data);
 };
 
 #endif // DEVICEMANAGER_H
@@ -93,11 +115,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 查找Qt
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
 
-# 设置libimobiledevice路径
+# 设置libimobiledevice v1.4.0+ 路径
 set(LIBIMOBILEDEVICE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libimobiledevice")
 
 # 包含目录
-include_directories(${LIBIMOBILEDEVICE_DIR})
+include_directories(${LIBIMOBILEDEVICE_DIR}/include)
 
 # 源文件
 set(SOURCES
@@ -126,17 +148,19 @@ if(WIN32)
         VS_DEBUGGER_ENVIRONMENT "PATH=${LIBIMOBILEDEVICE_DIR};$ENV{PATH}"
     )
     
-    # 复制DLL文件到输出目录
+    # 复制所有DLL文件到输出目录（包含v1.4.0新增依赖）
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${LIBIMOBILEDEVICE_DIR}"
         "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+        COMMENT "复制 libimobiledevice v1.4.0+ DLL文件"
     )
 endif()
 
 # 预定义宏
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     LIBIMOBILEDEVICE_AVAILABLE
+    LIBIMOBILEDEVICE_VERSION_1_4_0  # 标识使用v1.4.0+
     IDEVICE_TOOLS_PATH="${LIBIMOBILEDEVICE_DIR}"
 )
 ```
@@ -156,14 +180,14 @@ DeviceManager::DeviceManager(QObject *parent)
     : QObject(parent)
     , device_(nullptr)
     , lockdown_(nullptr)
-    , deviceCheckTimer_(new QTimer(this))
+    , subscriptionContext_(nullptr)
 {
-    // 设置设备检查定时器
-    connect(deviceCheckTimer_, &QTimer::timeout, this, &DeviceManager::checkDeviceStatus);
-    deviceCheckTimer_->start(2000); // 每2秒检查一次
+    // v1.4.0+ 使用事件订阅而非定时轮询
+    startEventSubscription();
 }
 
 DeviceManager::~DeviceManager() {
+    stopEventSubscription();
     cleanupDevice();
 }
 
@@ -182,17 +206,32 @@ bool DeviceManager::isLibraryAvailable() {
 
 QStringList DeviceManager::getConnectedDevices() {
     QStringList devices;
-    char **device_list = nullptr;
+    
+    // v1.4.0+ 支持扩展设备列表（包含网络设备）
+    idevice_info_t *device_list = nullptr;
     int count = 0;
     
-    idevice_error_t error = idevice_get_device_list(&device_list, &count);
+    idevice_error_t error = idevice_get_device_list_extended(&device_list, &count);
     if (error == IDEVICE_E_SUCCESS && device_list) {
         for (int i = 0; i < count; i++) {
-            devices << QString::fromUtf8(device_list[i]);
+            QString udid = QString::fromUtf8(device_list[i].udid);
+            devices << udid;
+            qDebug() << "设备:" << udid
+                     << "连接类型:" << (device_list[i].conn_type == CONNECTION_USBMUXD ? "USB" : "网络");
         }
-        idevice_device_list_free(device_list);
+        idevice_device_list_extended_free(device_list);
     } else {
-        qWarning() << "获取设备列表失败:" << getErrorMessage(error);
+        // 回退到标准API
+        char **simple_list = nullptr;
+        error = idevice_get_device_list(&simple_list, &count);
+        if (error == IDEVICE_E_SUCCESS && simple_list) {
+            for (int i = 0; i < count; i++) {
+                devices << QString::fromUtf8(simple_list[i]);
+            }
+            idevice_device_list_free(simple_list);
+        } else {
+            qWarning() << "获取设备列表失败:" << getErrorMessage(error);
+        }
     }
     
     return devices;
@@ -215,16 +254,22 @@ void DeviceManager::disconnectFromDevice() {
 }
 
 bool DeviceManager::initializeDevice(const QString& udid) {
-    // 连接设备
+    // v1.4.0+ 支持网络设备连接选项
     QByteArray udidBytes = udid.toUtf8();
-    idevice_error_t error = idevice_new(&device_, udidBytes.constData());
+    idevice_error_t error = idevice_new_with_options(&device_,
+                                                      udidBytes.constData(),
+                                                      IDEVICE_LOOKUP_USBMUX | IDEVICE_LOOKUP_NETWORK);
     if (error != IDEVICE_E_SUCCESS) {
-        emit errorOccurred(QString("设备连接失败: %1").arg(getErrorMessage(error)));
-        return false;
+        // 回退到标准连接方式
+        error = idevice_new(&device_, udidBytes.constData());
+        if (error != IDEVICE_E_SUCCESS) {
+            emit errorOccurred(QString("设备连接失败: %1").arg(getErrorMessage(error)));
+            return false;
+        }
     }
     
-    // 创建lockdown客户端
-    lockdownd_error_t lockdown_error = lockdownd_client_new(device_, &lockdown_, "phone-linkc");
+    // 创建lockdown客户端，使用推荐的握手方式
+    lockdownd_error_t lockdown_error = lockdownd_client_new_with_handshake(device_, &lockdown_, "phone-linkc");
     if (lockdown_error != LOCKDOWN_E_SUCCESS) {
         emit errorOccurred(QString("Lockdown客户端创建失败: %1").arg(lockdown_error));
         cleanupDevice();
@@ -261,31 +306,58 @@ QString DeviceManager::getErrorMessage(int errorCode) {
     }
 }
 
-void DeviceManager::checkDeviceStatus() {
-    QStringList currentDevices = getConnectedDevices();
-    static QStringList previousDevices;
-    
-    // 检查新连接的设备
-    for (const QString& device : currentDevices) {
-        if (!previousDevices.contains(device)) {
-            qDebug() << "检测到新设备:" << device;
-            if (currentUdid_.isEmpty()) {
-                connectToDevice(device);
-            }
-        }
+// v1.4.0+ 使用事件订阅机制
+void DeviceManager::startEventSubscription() {
+    if (subscriptionContext_) {
+        return; // 已经订阅
     }
     
-    // 检查断开的设备
-    for (const QString& device : previousDevices) {
-        if (!currentDevices.contains(device)) {
-            qDebug() << "设备断开连接:" << device;
-            if (device == currentUdid_) {
-                disconnectFromDevice();
-            }
-        }
+    idevice_error_t ret = idevice_events_subscribe(&subscriptionContext_,
+                                                    deviceEventCallback,
+                                                    this);
+    if (ret == IDEVICE_E_SUCCESS) {
+        qDebug() << "成功订阅设备事件（v1.4.0+ API）";
+    } else {
+        qWarning() << "订阅设备事件失败，错误码:" << ret;
+        subscriptionContext_ = nullptr;
+    }
+}
+
+void DeviceManager::stopEventSubscription() {
+    if (subscriptionContext_) {
+        idevice_events_unsubscribe(subscriptionContext_);
+        subscriptionContext_ = nullptr;
+        qDebug() << "已停止设备事件订阅";
+    }
+}
+
+void DeviceManager::deviceEventCallback(const idevice_event_t *event, void *user_data) {
+    DeviceManager *manager = static_cast<DeviceManager*>(user_data);
+    if (!manager || !event) {
+        return;
     }
     
-    previousDevices = currentDevices;
+    QString udid = QString::fromUtf8(event->udid);
+    QString connType = (event->conn_type == CONNECTION_USBMUXD) ? "USB" : "网络";
+    
+    switch (event->event) {
+        case IDEVICE_DEVICE_ADD:
+            qDebug() << "设备连接事件:" << udid << "类型:" << connType;
+            emit manager->deviceConnected(udid);
+            break;
+            
+        case IDEVICE_DEVICE_REMOVE:
+            qDebug() << "设备断开事件:" << udid;
+            if (udid == manager->currentUdid_) {
+                manager->disconnectFromDevice();
+            }
+            emit manager->deviceDisconnected(udid);
+            break;
+            
+        case IDEVICE_DEVICE_PAIRED:
+            qDebug() << "设备配对事件:" << udid;
+            break;
+    }
 }
 ```
 
@@ -303,7 +375,7 @@ QString DeviceManager::getDeviceName() {
         plist_get_string_val(value, &name_str);
         QString result = QString::fromUtf8(name_str);
         
-        free(name_str);
+        plist_mem_free(name_str);  // v1.4.0+ 使用统一内存释放函数
         plist_free(value);
         
         return result;
@@ -323,7 +395,7 @@ QString DeviceManager::getDeviceModel() {
         plist_get_string_val(value, &model_str);
         QString result = QString::fromUtf8(model_str);
         
-        free(model_str);
+        plist_mem_free(model_str);  // v1.4.0+ 使用统一内存释放函数
         plist_free(value);
         
         return result;
@@ -343,7 +415,7 @@ QString DeviceManager::getIOSVersion() {
         plist_get_string_val(value, &version_str);
         QString result = QString::fromUtf8(version_str);
         
-        free(version_str);
+        plist_mem_free(version_str);  // v1.4.0+ 使用统一内存释放函数
         plist_free(value);
         
         return result;
@@ -361,6 +433,7 @@ struct DeviceInfo {
     QString serialNumber;
     QString buildVersion;
     QString hardwareModel;
+    QString connectionType;  // v1.4.0+ 新增：连接类型（USB/网络）
 };
 
 DeviceInfo DeviceManager::getFullDeviceInfo() {
@@ -370,15 +443,28 @@ DeviceInfo DeviceManager::getFullDeviceInfo() {
     
     info.udid = currentUdid_;
     
+    // v1.4.0+ 获取连接类型信息
+    idevice_info_t *device_list = nullptr;
+    int count = 0;
+    if (idevice_get_device_list_extended(&device_list, &count) == IDEVICE_E_SUCCESS) {
+        for (int i = 0; i < count; i++) {
+            if (QString::fromUtf8(device_list[i].udid) == currentUdid_) {
+                info.connectionType = (device_list[i].conn_type == CONNECTION_USBMUXD) ? "USB" : "网络";
+                break;
+            }
+        }
+        idevice_device_list_extended_free(device_list);
+    }
+    
     // 批量获取设备信息
     QStringList keys = {
-        "DeviceName", "ProductType", "ProductVersion", 
+        "DeviceName", "ProductType", "ProductVersion",
         "SerialNumber", "BuildVersion", "HardwareModel"
     };
     
     for (const QString& key : keys) {
         plist_t value = nullptr;
-        lockdownd_error_t error = lockdownd_get_value(lockdown_, nullptr, 
+        lockdownd_error_t error = lockdownd_get_value(lockdown_, nullptr,
                                                      key.toUtf8().constData(), &value);
         
         if (error == LOCKDOWN_E_SUCCESS && value) {
@@ -393,7 +479,7 @@ DeviceInfo DeviceManager::getFullDeviceInfo() {
             else if (key == "BuildVersion") info.buildVersion = result;
             else if (key == "HardwareModel") info.hardwareModel = result;
             
-            free(str_value);
+            plist_mem_free(str_value);  // v1.4.0+ 使用统一内存释放函数
             plist_free(value);
         }
     }
@@ -426,8 +512,10 @@ QImage DeviceManager::takeScreenshot() {
     
     QImage screenshot;
     if (error == SCREENSHOTR_E_SUCCESS && imgdata) {
-        screenshot = QImage::fromData(reinterpret_cast<const uchar*>(imgdata), 
+        screenshot = QImage::fromData(reinterpret_cast<const uchar*>(imgdata),
                                     static_cast<int>(imgsize), "PNG");
+        // 注意：screenshotr返回的数据使用标准free()释放
+        // 这不是plist数据，所以不使用plist_mem_free()
         free(imgdata);
         
         if (!screenshot.isNull()) {
