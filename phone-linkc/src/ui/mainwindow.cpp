@@ -15,6 +15,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_photoManager(new PhotoManager(this))
     , m_fileManager(new FileManager(this))
     , m_appManager(new AppManager(this))
+    , m_contactManager(new ContactManager(this))
     , m_debugWindow(nullptr)
 {
     ui->setupUi(this);
@@ -29,6 +30,9 @@ MainWindow::MainWindow(QWidget *parent)
     // 初始化应用页面
     m_appPage = ui->appPage;
     m_appPage->setAppManager(m_appManager);
+    
+    // 初始化通讯录页面
+    ui->contactPage->setContactManager(m_contactManager);
     
     // 连接设备管理器信号
     connect(m_deviceManager, &DeviceManager::deviceConnected,
@@ -105,6 +109,9 @@ void MainWindow::onDeviceConnected(const QString &udid)
     if (m_appPage) {
         m_appPage->setCurrentDevice(udid);
     }
+    
+    // 更新通讯录页面
+    ui->contactPage->setCurrentDevice(udid);
 }
 
 void MainWindow::onDeviceDisconnected()
@@ -137,6 +144,9 @@ void MainWindow::onDeviceDisconnected()
     if (m_appPage) {
         m_appPage->clearDevice();
     }
+    
+    // 清空通讯录页面
+    ui->contactPage->clearDevice();
 }
 
 void MainWindow::onDeviceError(const QString &error)
@@ -169,6 +179,9 @@ void MainWindow::onConnectButtonClicked()
             if (m_appPage) {
                 m_appPage->setCurrentDevice(udid);
             }
+            
+            // 更新通讯录页面
+            ui->contactPage->setCurrentDevice(udid);
         }
     }
 }

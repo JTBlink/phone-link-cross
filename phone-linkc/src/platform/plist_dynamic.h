@@ -230,4 +230,46 @@ typedef plist_t (*plist_new_array_func)(void);
  */
 typedef void (*plist_array_append_item_func)(plist_t node, plist_t item);
 
+/**
+ * Create a new plist_t type #PLIST_UINT
+ *
+ * @param val the unsigned integer value
+ * @return the created item
+ *
+ * @原型 plist_t plist_new_uint(uint64_t val);
+ */
+typedef plist_t (*plist_new_uint_func)(uint64_t val);
+
+/**
+ * Create a new plist_t type #PLIST_DATE
+ *
+ * @param sec the number of seconds since 01/01/2001
+ * @param usec the number of microseconds
+ * @return the created item
+ *
+ * @原型 plist_t plist_new_date(int32_t sec, int32_t usec);
+ */
+typedef plist_t (*plist_new_date_func)(int32_t sec, int32_t usec);
+
+/**
+ * Export the #plist_t structure to XML format.
+ *
+ * @param plist the root node to export
+ * @param plist_xml a pointer to a C-string. This function allocates the memory,
+ *            caller is responsible for freeing it. Data is UTF-8 encoded.
+ * @param length a pointer to an uint32_t variable. Represents the length of the allocated buffer.
+ *
+ * @原型 void plist_to_xml(plist_t plist, char **plist_xml, uint32_t * length);
+ */
+typedef void (*plist_to_xml_func)(plist_t plist, char **plist_xml, uint32_t * length);
+
+/**
+ * Frees the memory allocated by plist_to_xml().
+ *
+ * @param plist_xml The buffer allocated by plist_to_xml().
+ *
+ * @原型 void plist_to_xml_free(char *plist_xml);
+ */
+typedef void (*plist_to_xml_free_func)(char *plist_xml);
+
 #endif // PLIST_DYNAMIC_H

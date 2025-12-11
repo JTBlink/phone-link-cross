@@ -8,6 +8,7 @@
 #include "core/photo/photomanager.h"
 #include "core/file/filemanager.h"
 #include "core/app/appmanager.h"
+#include "core/contact/contactmanager.h"
 #include "ui/apppage.h"
 
 class DebugWindow;
@@ -65,6 +66,7 @@ private:
     PhotoManager *m_photoManager;
     FileManager *m_fileManager;
     AppManager *m_appManager;
+    ContactManager *m_contactManager;
     
     // UI Pages
     AppPage *m_appPage;

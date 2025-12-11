@@ -52,6 +52,8 @@
 #include "afc_dynamic.h"
 
 #include "instproxy_dynamic.h"
+#include "mobilesync_dynamic.h"
+#include "mobilebackup2_dynamic.h"
 
 /* ============================================================================
  * idevice 函数指针类型定义
@@ -275,6 +277,10 @@ public:
     plist_dict_next_item_func plist_dict_next_item;   ///< 遍历字典项
     plist_new_array_func plist_new_array;             ///< 创建数组
     plist_array_append_item_func plist_array_append_item; ///< 追加数组项
+    plist_new_uint_func plist_new_uint;               ///< 创建无符号整数
+    plist_new_date_func plist_new_date;               ///< 创建日期
+    plist_to_xml_func plist_to_xml;                   ///< 导出为 XML
+    plist_to_xml_free_func plist_to_xml_free;         ///< 释放 XML 缓冲区
     
     /* ========================================================================
      * installation_proxy 服务函数指针
@@ -315,6 +321,41 @@ public:
     lockdownd_start_service_func lockdownd_start_service;                     ///< 启动服务
     lockdownd_service_descriptor_free_func lockdownd_service_descriptor_free; ///< 释放服务描述符
     
+    /* ========================================================================
+     * mobilesync 服务函数指针
+     *
+     * mobilesync 服务用于同步 iOS 设备上的数据类（通讯录、日历、书签等）。
+     * ======================================================================== */
+    
+    mobilesync_client_start_service_func mobilesync_client_start_service;         ///< 启动 mobilesync 服务
+    mobilesync_client_new_func mobilesync_client_new;                             ///< 创建 mobilesync 客户端
+    mobilesync_client_free_func mobilesync_client_free;                           ///< 释放 mobilesync 客户端
+    mobilesync_receive_func mobilesync_receive;                                   ///< 接收数据
+    mobilesync_send_func mobilesync_send;                                         ///< 发送数据
+    mobilesync_start_func mobilesync_start;                                       ///< 开始同步会话
+    mobilesync_finish_func mobilesync_finish;                                     ///< 完成同步会话
+    mobilesync_get_all_records_from_device_func mobilesync_get_all_records_from_device; ///< 获取所有记录
+    mobilesync_receive_changes_func mobilesync_receive_changes;                   ///< 接收变更
+    mobilesync_acknowledge_changes_from_device_func mobilesync_acknowledge_changes_from_device; ///< 确认变更
+    mobilesync_anchors_new_func mobilesync_anchors_new;                           ///< 创建锚点
+    mobilesync_anchors_free_func mobilesync_anchors_free;                         ///< 释放锚点
+    mobilesync_cancel_func mobilesync_cancel;                                     ///< 取消同步
+    
+    /* ========================================================================
+     * mobilebackup2 服务函数指针
+     * ======================================================================== */
+    
+    mobilebackup2_client_new_func mobilebackup2_client_new;
+    mobilebackup2_client_start_service_func mobilebackup2_client_start_service;
+    mobilebackup2_client_free_func mobilebackup2_client_free;
+    mobilebackup2_send_message_func mobilebackup2_send_message;
+    mobilebackup2_receive_message_func mobilebackup2_receive_message;
+    mobilebackup2_send_raw_func mobilebackup2_send_raw;
+    mobilebackup2_receive_raw_func mobilebackup2_receive_raw;
+    mobilebackup2_version_exchange_func mobilebackup2_version_exchange;
+    mobilebackup2_send_request_func mobilebackup2_send_request;
+    mobilebackup2_send_status_response_func mobilebackup2_send_status_response;
+
 private:
     /* ========================================================================
      * 私有构造函数和析构函数（单例模式）

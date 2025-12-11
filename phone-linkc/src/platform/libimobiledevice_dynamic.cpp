@@ -45,6 +45,10 @@ LibimobiledeviceDynamic::LibimobiledeviceDynamic()
     plist_dict_next_item = nullptr;
     plist_new_array = nullptr;
     plist_array_append_item = nullptr;
+    plist_new_uint = nullptr;
+    plist_new_date = nullptr;
+    plist_to_xml = nullptr;
+    plist_to_xml_free = nullptr;
     
     // installation_proxy 函数指针
     instproxy_client_new = nullptr;
@@ -69,6 +73,33 @@ LibimobiledeviceDynamic::LibimobiledeviceDynamic()
     afc_remove_path = nullptr;
     afc_rename_path = nullptr;
     afc_dictionary_free = nullptr;
+    
+    // mobilesync 函数指针
+    mobilesync_client_start_service = nullptr;
+    mobilesync_client_new = nullptr;
+    mobilesync_client_free = nullptr;
+    mobilesync_receive = nullptr;
+    mobilesync_send = nullptr;
+    mobilesync_start = nullptr;
+    mobilesync_finish = nullptr;
+    mobilesync_get_all_records_from_device = nullptr;
+    mobilesync_receive_changes = nullptr;
+    mobilesync_acknowledge_changes_from_device = nullptr;
+    mobilesync_anchors_new = nullptr;
+    mobilesync_anchors_free = nullptr;
+    mobilesync_cancel = nullptr;
+    
+    // mobilebackup2 函数指针
+    mobilebackup2_client_new = nullptr;
+    mobilebackup2_client_start_service = nullptr;
+    mobilebackup2_client_free = nullptr;
+    mobilebackup2_send_message = nullptr;
+    mobilebackup2_receive_message = nullptr;
+    mobilebackup2_send_raw = nullptr;
+    mobilebackup2_receive_raw = nullptr;
+    mobilebackup2_version_exchange = nullptr;
+    mobilebackup2_send_request = nullptr;
+    mobilebackup2_send_status_response = nullptr;
 }
 
 LibimobiledeviceDynamic::~LibimobiledeviceDynamic()
@@ -213,6 +244,10 @@ bool LibimobiledeviceDynamic::initialize()
     success &= loadFunction("plist_dict_next_item", plist_dict_next_item, m_plistLib);
     success &= loadFunction("plist_new_array", plist_new_array, m_plistLib);
     success &= loadFunction("plist_array_append_item", plist_array_append_item, m_plistLib);
+    success &= loadFunction("plist_new_uint", plist_new_uint, m_plistLib);
+    success &= loadFunction("plist_new_date", plist_new_date, m_plistLib);
+    success &= loadFunction("plist_to_xml", plist_to_xml, m_plistLib);
+    success &= loadFunction("plist_to_xml_free", plist_to_xml_free, m_plistLib);
     
     // 加载 instproxy 函数
     success &= loadFunction("instproxy_client_new", instproxy_client_new, m_imobiledeviceLib);
@@ -221,6 +256,33 @@ bool LibimobiledeviceDynamic::initialize()
     success &= loadFunction("instproxy_install", instproxy_install, m_imobiledeviceLib);
     success &= loadFunction("instproxy_uninstall", instproxy_uninstall, m_imobiledeviceLib);
     success &= loadFunction("instproxy_lookup", instproxy_lookup, m_imobiledeviceLib);
+    
+    // 加载 mobilesync 函数
+    success &= loadFunction("mobilesync_client_start_service", mobilesync_client_start_service, m_imobiledeviceLib);
+    success &= loadFunction("mobilesync_client_new", mobilesync_client_new, m_imobiledeviceLib);
+    success &= loadFunction("mobilesync_client_free", mobilesync_client_free, m_imobiledeviceLib);
+    success &= loadFunction("mobilesync_receive", mobilesync_receive, m_imobiledeviceLib);
+    success &= loadFunction("mobilesync_send", mobilesync_send, m_imobiledeviceLib);
+    success &= loadFunction("mobilesync_start", mobilesync_start, m_imobiledeviceLib);
+    success &= loadFunction("mobilesync_finish", mobilesync_finish, m_imobiledeviceLib);
+    success &= loadFunction("mobilesync_get_all_records_from_device", mobilesync_get_all_records_from_device, m_imobiledeviceLib);
+    success &= loadFunction("mobilesync_receive_changes", mobilesync_receive_changes, m_imobiledeviceLib);
+    success &= loadFunction("mobilesync_acknowledge_changes_from_device", mobilesync_acknowledge_changes_from_device, m_imobiledeviceLib);
+    success &= loadFunction("mobilesync_anchors_new", mobilesync_anchors_new, m_imobiledeviceLib);
+    success &= loadFunction("mobilesync_anchors_free", mobilesync_anchors_free, m_imobiledeviceLib);
+    success &= loadFunction("mobilesync_cancel", mobilesync_cancel, m_imobiledeviceLib);
+    
+    // 加载 mobilebackup2 函数
+    success &= loadFunction("mobilebackup2_client_new", mobilebackup2_client_new, m_imobiledeviceLib);
+    success &= loadFunction("mobilebackup2_client_start_service", mobilebackup2_client_start_service, m_imobiledeviceLib);
+    success &= loadFunction("mobilebackup2_client_free", mobilebackup2_client_free, m_imobiledeviceLib);
+    success &= loadFunction("mobilebackup2_send_message", mobilebackup2_send_message, m_imobiledeviceLib);
+    success &= loadFunction("mobilebackup2_receive_message", mobilebackup2_receive_message, m_imobiledeviceLib);
+    success &= loadFunction("mobilebackup2_send_raw", mobilebackup2_send_raw, m_imobiledeviceLib);
+    success &= loadFunction("mobilebackup2_receive_raw", mobilebackup2_receive_raw, m_imobiledeviceLib);
+    success &= loadFunction("mobilebackup2_version_exchange", mobilebackup2_version_exchange, m_imobiledeviceLib);
+    success &= loadFunction("mobilebackup2_send_request", mobilebackup2_send_request, m_imobiledeviceLib);
+    success &= loadFunction("mobilebackup2_send_status_response", mobilebackup2_send_status_response, m_imobiledeviceLib);
     
     if (!success) {
         qWarning() << "部分函数加载失败";
@@ -292,6 +354,10 @@ void LibimobiledeviceDynamic::cleanup()
     plist_dict_next_item = nullptr;
     plist_new_array = nullptr;
     plist_array_append_item = nullptr;
+    plist_new_uint = nullptr;
+    plist_new_date = nullptr;
+    plist_to_xml = nullptr;
+    plist_to_xml_free = nullptr;
     
     instproxy_client_new = nullptr;
     instproxy_client_free = nullptr;
@@ -299,6 +365,31 @@ void LibimobiledeviceDynamic::cleanup()
     instproxy_install = nullptr;
     instproxy_uninstall = nullptr;
     instproxy_lookup = nullptr;
+    
+    mobilesync_client_start_service = nullptr;
+    mobilesync_client_new = nullptr;
+    mobilesync_client_free = nullptr;
+    mobilesync_receive = nullptr;
+    mobilesync_send = nullptr;
+    mobilesync_start = nullptr;
+    mobilesync_finish = nullptr;
+    mobilesync_get_all_records_from_device = nullptr;
+    mobilesync_receive_changes = nullptr;
+    mobilesync_acknowledge_changes_from_device = nullptr;
+    mobilesync_anchors_new = nullptr;
+    mobilesync_anchors_free = nullptr;
+    mobilesync_cancel = nullptr;
+    
+    mobilebackup2_client_new = nullptr;
+    mobilebackup2_client_start_service = nullptr;
+    mobilebackup2_client_free = nullptr;
+    mobilebackup2_send_message = nullptr;
+    mobilebackup2_receive_message = nullptr;
+    mobilebackup2_send_raw = nullptr;
+    mobilebackup2_receive_raw = nullptr;
+    mobilebackup2_version_exchange = nullptr;
+    mobilebackup2_send_request = nullptr;
+    mobilebackup2_send_status_response = nullptr;
     
     // AFC 函数指针
     afc_client_new = nullptr;

@@ -274,7 +274,7 @@ REM Parameters: %1=build config (Release/Debug), %2=executable path
 call :init_constants
 set "DEPLOY_CONFIG=%~1"
 set "EXE_PATH=%~2"
-set "DEPLOY_DIR=%DEPLOY_CONFIG%\deploy"
+set "DEPLOY_DIR=%DEPLOY_CONFIG%"
 
 call :log_newline
 call :log_message "Executable found at: %EXE_PATH%"
