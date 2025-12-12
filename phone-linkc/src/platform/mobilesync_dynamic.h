@@ -77,15 +77,15 @@ typedef mobilesync_error_t (*mobilesync_acknowledge_changes_from_device_func)(mo
 
 /**
  * 创建锚点结构
- * @原型 mobilesync_error_t mobilesync_anchors_new(const char *device_anchor, const char *computer_anchor, mobilesync_anchors_t *anchor);
+ * @原型 mobilesync_anchors_t mobilesync_anchors_new(const char *device_anchor, const char *computer_anchor);
  */
-typedef mobilesync_error_t (*mobilesync_anchors_new_func)(const char *device_anchor, const char *computer_anchor, mobilesync_anchors_t *anchor);
+typedef mobilesync_anchors_t (*mobilesync_anchors_new_func)(const char *device_anchor, const char *computer_anchor);
 
 /**
  * 释放锚点结构
- * @原型 mobilesync_error_t mobilesync_anchors_free(mobilesync_anchors_t anchors);
+ * @原型 void mobilesync_anchors_free(mobilesync_anchors_t anchors);
  */
-typedef mobilesync_error_t (*mobilesync_anchors_free_func)(mobilesync_anchors_t anchors);
+typedef void (*mobilesync_anchors_free_func)(mobilesync_anchors_t anchors);
 
 /**
  * 取消同步会话

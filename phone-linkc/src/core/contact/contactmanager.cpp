@@ -1,5 +1,5 @@
-// contactmanager.cpp  — 修改版（按方案C）
-// 主要修复：Backup 请求 options 补齐；Status.plist 生成改为触发完整备份；保持协议的长度帧发送
+// contactmanager.cpp — 使用 mobilesync 协议获取通讯录
+// 通过 com.apple.mobilesync 服务直接同步联系人数据
 
 #include "contactmanager.h"
 #include "platform/libimobiledevice_dynamic.h"
@@ -7,20 +7,17 @@
 #include <QTextStream>
 #include <QDebug>
 #include <QDir>
-#include <QTemporaryDir>
-#include <QSqlDatabase>
-#include <QSqlQuery>
-#include <QSqlError>
 #include <QCoreApplication>
-#include <QCryptographicHash>
-#include <QRegularExpression>
 #include <QStandardPaths>
-#include <QDataStream>
 #include <QDateTime>
 #include <QUuid>
+#include <QSettings>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 
-// 支持的协议版本
-static const int MB2_VERSION_COUNT = 2;
+// 通讯录数据类标识符
+static const char* CONTACTS_DATA_CLASS = "com.apple.Contacts";
 
 ContactManager::ContactManager(QObject *parent)
     : QObject(parent)
@@ -61,6 +58,9 @@ bool ContactManager::connectToDevice(const QString &udid)
     m_currentUdid = udid;
     m_isConnected = true;
     
+    // 加载之前保存的锚点
+    loadAnchors();
+    
     qDebug() << "ContactManager: 已成功连接到设备" << udid;
     return true;
 }
@@ -81,876 +81,627 @@ bool ContactManager::syncContacts()
         return false;
     }
 
-    // 使用持久化备份目录（与 idevicebackup2 兼容）
-    // 这样 Status.plist 等备份状态文件可以被保留，支持增量备份
-    QString backupRoot = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/iOSBackups";
+    emit syncProgress(0, 100);
+    qDebug() << "ContactManager: 开始使用 mobilesync 同步通讯录...";
+
+    bool result = syncContactsViaMobileSync();
     
-    // 确保备份目录存在
-    QDir backupDir(backupRoot);
-    if (!backupDir.exists()) {
-        if (!backupDir.mkpath(".")) {
-            emit errorOccurred("无法创建备份目录");
+    if (result) {
+        int totalContacts = m_contacts.size();
+        QString message = QString("成功同步 %1 个联系人").arg(totalContacts);
+        qDebug() << "ContactManager:" << message;
+        emit syncProgress(100, 100);
+        emit syncCompleted(true, message);
+    }
+    
+    return result;
+}
+
+bool ContactManager::syncContactsViaMobileSync()
+{
+    LibimobiledeviceDynamic& lib = LibimobiledeviceDynamic::instance();
+    
+    // 检查 mobilesync 函数是否可用
+    if (!lib.mobilesync_client_start_service ||
+        !lib.mobilesync_start ||
+        !lib.mobilesync_get_all_records_from_device ||
+        !lib.mobilesync_receive_changes ||
+        !lib.mobilesync_acknowledge_changes_from_device ||
+        !lib.mobilesync_finish ||
+        !lib.mobilesync_client_free ||
+        !lib.mobilesync_anchors_new ||
+        !lib.mobilesync_anchors_free) {
+        qWarning() << "ContactManager: mobilesync 函数未加载";
+        emit errorOccurred("mobilesync 服务不可用");
+        return false;
+    }
+    
+    mobilesync_client_t sync_client = nullptr;
+    
+    // 启动 mobilesync 服务
+    qDebug() << "ContactManager: 启动 mobilesync 服务...";
+    mobilesync_error_t sync_err = lib.mobilesync_client_start_service(
+        m_device, &sync_client, "phone-linkc");
+    
+    if (sync_err != MOBILESYNC_E_SUCCESS || !sync_client) {
+        qWarning() << "ContactManager: 启动 mobilesync 服务失败，错误码:" << sync_err;
+        emit errorOccurred(QString("启动 mobilesync 服务失败，错误码: %1").arg(sync_err));
+        return false;
+    }
+    
+    qDebug() << "ContactManager: mobilesync 服务已启动";
+    
+    // 生成新的计算机锚点
+    QString newComputerAnchor = generateComputerAnchor();
+    
+    // 创建锚点结构
+    mobilesync_anchors_t anchors = lib.mobilesync_anchors_new(
+        m_deviceAnchor.isEmpty() ? nullptr : m_deviceAnchor.toUtf8().constData(),
+        newComputerAnchor.toUtf8().constData()
+    );
+    
+    if (!anchors) {
+        qWarning() << "ContactManager: 创建锚点失败";
+        lib.mobilesync_client_free(sync_client);
+        emit errorOccurred("创建同步锚点失败");
+        return false;
+    }
+    
+    // 开始同步会话
+    mobilesync_sync_type_t sync_type;
+    uint64_t device_data_class_version = 0;
+    char* error_description = nullptr;
+    
+    qDebug() << "ContactManager: 开始同步会话，数据类:" << CONTACTS_DATA_CLASS;
+    qDebug() << "ContactManager: 设备锚点:" << (m_deviceAnchor.isEmpty() ? "(空)" : m_deviceAnchor);
+    qDebug() << "ContactManager: 计算机锚点:" << newComputerAnchor;
+    
+    sync_err = lib.mobilesync_start(
+        sync_client,
+        CONTACTS_DATA_CLASS,
+        anchors,
+        106,  // 计算机数据类版本（通讯录版本号）
+        &sync_type,
+        &device_data_class_version,
+        &error_description
+    );
+    
+    if (sync_err != MOBILESYNC_E_SUCCESS) {
+        qWarning() << "ContactManager: 开始同步会话失败，错误码:" << sync_err;
+        if (error_description) {
+            qWarning() << "ContactManager: 错误描述:" << error_description;
+            // 注意：error_description 由库分配，但我们无法安全释放它（跨 DLL 堆问题）
+        }
+        lib.mobilesync_anchors_free(anchors);
+        lib.mobilesync_client_free(sync_client);
+        emit errorOccurred(QString("开始同步会话失败，错误码: %1").arg(sync_err));
+        return false;
+    }
+    
+    qDebug() << "========== 同步会话信息 ==========";
+    qDebug() << "数据类:" << CONTACTS_DATA_CLASS;
+    qDebug() << "同步类型:" << sync_type;
+    qDebug() << "设备数据类版本:" << device_data_class_version;
+    qDebug() << "计算机数据类版本: 106";
+    qDebug() << "设备锚点:" << (m_deviceAnchor.isEmpty() ? "(空)" : m_deviceAnchor);
+    qDebug() << "计算机锚点:" << newComputerAnchor;
+    
+    if (error_description) {
+        qDebug() << "错误描述:" << error_description;
+    }
+    
+    // 根据同步类型决定策略并打印详细说明
+    switch (sync_type) {
+        case MOBILESYNC_SYNC_TYPE_FAST:
+            qDebug() << "同步模式: FAST (快速同步) - 仅同步变更的联系人";
+            break;
+        case MOBILESYNC_SYNC_TYPE_SLOW:
+            qDebug() << "同步模式: SLOW (慢速同步) - 完整同步所有联系人";
+            m_contacts.clear();
+            break;
+        case MOBILESYNC_SYNC_TYPE_RESET:
+            qDebug() << "同步模式: RESET (重置同步) - 清除本地数据并重新同步";
+            m_contacts.clear();
+            break;
+        default:
+            qDebug() << "同步模式: UNKNOWN (未知类型:" << sync_type << ")";
+    }
+    qDebug() << "===================================";
+    
+    emit syncProgress(10, 100);
+    
+    // 请求从设备获取所有记录
+    qDebug() << "ContactManager: 请求获取所有联系人记录...";
+    sync_err = lib.mobilesync_get_all_records_from_device(sync_client);
+    
+    if (sync_err != MOBILESYNC_E_SUCCESS) {
+        qWarning() << "ContactManager: 请求获取记录失败，错误码:" << sync_err;
+        lib.mobilesync_anchors_free(anchors);
+        lib.mobilesync_client_free(sync_client);
+        emit errorOccurred(QString("请求获取记录失败，错误码: %1").arg(sync_err));
+        return false;
+    }
+    
+    emit syncProgress(20, 100);
+    
+    // 接收联系人数据
+    qDebug() << "ContactManager: 开始接收联系人数据...";
+    uint8_t is_last_record = 0;
+    int batch_count = 0;
+    bool receive_done = false;
+    
+    while (!receive_done) {
+        plist_t entities = nullptr;
+        plist_t actions = nullptr;
+        
+        sync_err = lib.mobilesync_receive_changes(sync_client, &entities, &is_last_record, &actions);
+        
+        if (sync_err != MOBILESYNC_E_SUCCESS) {
+            // 超时错误 (-5) 在已有数据的情况下可能表示传输结束
+            if (sync_err == MOBILESYNC_E_RECEIVE_TIMEOUT && batch_count > 0) {
+                qDebug() << "ContactManager: 接收超时，已收到" << batch_count << "批数据，视为传输完成";
+                receive_done = true;
+                break;
+            }
+            qWarning() << "ContactManager: 接收变更失败，错误码:" << sync_err;
+            lib.mobilesync_anchors_free(anchors);
+            lib.mobilesync_client_free(sync_client);
+            emit errorOccurred(QString("接收联系人数据失败，错误码: %1").arg(sync_err));
             return false;
         }
+        
+        batch_count++;
+        
+        // 解析联系人实体
+        if (entities) {
+            // 打印原始 plist 数据（调试用）
+            char* xml_out = nullptr;
+            uint32_t xml_len = 0;
+            lib.plist_to_xml(entities, &xml_out, &xml_len);
+            if (xml_out && xml_len > 0) {
+                // 只打印前 5000 个字符以避免日志过长
+                QString xmlStr = QString::fromUtf8(xml_out, qMin((uint32_t)5000, xml_len));
+                qDebug() << "ContactManager: 批次" << batch_count << "原始数据（前5000字符）:";
+                qDebug().noquote() << xmlStr;
+                if (xml_len > 5000) {
+                    qDebug() << "... (数据已截断，总长度:" << xml_len << "字节)";
+                }
+                if (lib.plist_mem_free) {
+                    lib.plist_mem_free(xml_out);
+                }
+            }
+            
+            QVector<Contact> batchContacts = parseContactEntities(entities);
+            qDebug() << "ContactManager: 批次" << batch_count << "收到" << batchContacts.size() << "个联系人";
+            
+            // 打印前 5 个联系人的详细信息
+            int printCount = qMin(5, batchContacts.size());
+            for (int i = 0; i < printCount; i++) {
+                const Contact& c = batchContacts[i];
+                qDebug() << "  联系人" << (i+1) << ":"
+                         << "ID=" << c.id
+                         << "姓名=" << c.fullName()
+                         << "电话=" << c.phoneNumbers.join(", ")
+                         << "邮箱=" << c.emails.join(", ");
+            }
+            if (batchContacts.size() > 5) {
+                qDebug() << "  ... 还有" << (batchContacts.size() - 5) << "个联系人未显示";
+            }
+            
+            m_contacts.append(batchContacts);
+            lib.plist_free(entities);
+        }
+        
+        if (actions) {
+            // 打印 actions 数据（如果有）
+            char* actions_xml = nullptr;
+            uint32_t actions_len = 0;
+            lib.plist_to_xml(actions, &actions_xml, &actions_len);
+            if (actions_xml && actions_len > 0) {
+                qDebug() << "ContactManager: 批次" << batch_count << "actions 数据:";
+                qDebug().noquote() << QString::fromUtf8(actions_xml, actions_len);
+                if (lib.plist_mem_free) {
+                    lib.plist_mem_free(actions_xml);
+                }
+            }
+            lib.plist_free(actions);
+        }
+        
+        // 检查是否是最后一批
+        if (is_last_record) {
+            qDebug() << "ContactManager: 收到最后一批数据标志";
+            receive_done = true;
+        }
+        
+        // 更新进度
+        int progress = 20 + (batch_count * 10) % 60;
+        emit syncProgress(progress, 100);
+        
+        // 处理事件以防止 UI 卡死
+        QCoreApplication::processEvents();
     }
     
-    qDebug() << "ContactManager: 准备备份到持久化目录:" << backupRoot;
-
-    emit syncProgress(0, 100);
-    qDebug() << "ContactManager: 开始执行备份，这可能需要一些时间...";
-
-    // 执行备份并获取数据库路径
-    QString dbPath = performBackupAndGetDB(backupRoot);
-    if (dbPath.isEmpty()) {
-        // 错误信息已经在 performBackupAndGetDB 中发出
-        return false;
-    }
-
-    emit syncProgress(50, 100);
-    qDebug() << "ContactManager: 数据库已提取:" << dbPath << "，开始读取联系人...";
-
-    // 从数据库读取联系人
-    if (!readContactsFromDB(dbPath)) {
-        emit errorOccurred("读取通讯录数据库失败");
-        return false;
-    }
-
-    emit syncProgress(100, 100);
+    qDebug() << "ContactManager: 共接收" << batch_count << "批数据，总计" << m_contacts.size() << "个联系人";
     
-    int totalContacts = m_contacts.size();
-    QString message = QString("成功同步 %1 个联系人").arg(totalContacts);
-    qDebug() << "ContactManager:" << message;
-    emit syncCompleted(true, message);
+    emit syncProgress(80, 100);
     
+    // 确认已接收变更
+    qDebug() << "ContactManager: 确认接收变更...";
+    sync_err = lib.mobilesync_acknowledge_changes_from_device(sync_client);
+    
+    if (sync_err != MOBILESYNC_E_SUCCESS) {
+        qWarning() << "ContactManager: 确认变更失败，错误码:" << sync_err;
+        // 继续执行，不中断
+    }
+    
+    emit syncProgress(90, 100);
+    
+    // 完成同步会话
+    qDebug() << "ContactManager: 完成同步会话...";
+    sync_err = lib.mobilesync_finish(sync_client);
+    
+    if (sync_err != MOBILESYNC_E_SUCCESS) {
+        qWarning() << "ContactManager: 完成同步会话失败，错误码:" << sync_err;
+        // 继续执行，不中断
+    }
+    
+    // 更新并保存锚点
+    if (anchors->device_anchor) {
+        m_deviceAnchor = QString::fromUtf8(anchors->device_anchor);
+        qDebug() << "ContactManager: 新设备锚点:" << m_deviceAnchor;
+    }
+    m_computerAnchor = newComputerAnchor;
+    saveAnchors();
+    
+    // 清理资源
+    lib.mobilesync_anchors_free(anchors);
+    lib.mobilesync_client_free(sync_client);
+    
+    qDebug() << "ContactManager: mobilesync 同步完成";
     return true;
 }
 
-QString ContactManager::performBackupAndGetDB(const QString& backupPath)
+QVector<Contact> ContactManager::parseContactEntities(plist_t entities)
 {
+    QVector<Contact> contacts;
     LibimobiledeviceDynamic& lib = LibimobiledeviceDynamic::instance();
     
-    // 检查 mobilebackup2 函数是否可用
-    if (!lib.mobilebackup2_client_start_service || 
-        !lib.mobilebackup2_version_exchange ||
-        !lib.mobilebackup2_send_request ||
-        !lib.mobilebackup2_receive_message ||
-        !lib.mobilebackup2_send_status_response ||
-        !lib.mobilebackup2_client_free) {
-        qWarning() << "ContactManager: mobilebackup2 函数未加载";
-        emit errorOccurred("mobilebackup2 服务不可用");
-        return QString();
+    if (!entities) {
+        return contacts;
     }
     
-    mobilebackup2_client_t mb2_client = nullptr;
+    plist_type entity_type = lib.plist_get_node_type(entities);
     
-    // 启动 mobilebackup2 服务
-    qDebug() << "ContactManager: 启动 mobilebackup2 服务...";
-    mobilebackup2_error_t mb2_err = lib.mobilebackup2_client_start_service(
-        m_device, &mb2_client, "phone-linkc");
-    
-    if (mb2_err != MOBILEBACKUP2_E_SUCCESS || !mb2_client) {
-        qWarning() << "ContactManager: 启动 mobilebackup2 服务失败，错误码:" << mb2_err;
-        emit errorOccurred(QString("启动备份服务失败，错误码: %1").arg(mb2_err));
-        return QString();
-    }
-    
-    qDebug() << "ContactManager: mobilebackup2 服务已启动";
-    
-    // 版本握手
-    double remote_version = 0.0;
-    double versions[] = { 2.0, 2.1 };
-    qDebug() << "ContactManager: 进行版本握手...";
-    mb2_err = lib.mobilebackup2_version_exchange(mb2_client, versions, MB2_VERSION_COUNT, &remote_version);
-    
-    if (mb2_err != MOBILEBACKUP2_E_SUCCESS) {
-        qWarning() << "ContactManager: 版本握手失败，错误码:" << mb2_err;
-        lib.mobilebackup2_client_free(mb2_client);
-        emit errorOccurred(QString("备份服务版本握手失败，错误码: %1").arg(mb2_err));
-        return QString();
-    }
-    
-    qDebug() << "ContactManager: 版本握手成功，远程版本:" << remote_version;
-    
-    // 创建设备备份目录
-    QString deviceBackupDir = QDir(backupPath).filePath(m_currentUdid);
-    QDir().mkpath(deviceBackupDir);
-    
-    // 构建备份选项（与 iTunes / idevicebackup2 保持兼容）
-    plist_t options = lib.plist_new_dict();
-    
-    // Sources = [] 空数组，让设备自行决定备份范围（最兼容的方式）
-    plist_t sources = lib.plist_new_array();
-    lib.plist_dict_set_item(options, "Sources", sources);
-    
-    // 强制完整备份（确保设备会上传所有文件）
-    lib.plist_dict_set_item(options, "ForceFullBackup", lib.plist_new_bool(1));
-    
-    // 禁用 Keychain 备份以避免权限问题
-    lib.plist_dict_set_item(options, "BackupKeybag", lib.plist_new_bool(0));
-    
-    // 客户端版本标识
-    lib.plist_dict_set_item(options, "ClientVersion", lib.plist_new_string("3.3"));
-    
-    qDebug() << "ContactManager: 配置备份选项 - Sources=[], ForceFullBackup=true, BackupKeybag=false, ClientVersion=3.3";
-    
-    // 发送备份请求
-    qDebug() << "ContactManager: 发送备份请求...";
-    mb2_err = lib.mobilebackup2_send_request(
-        mb2_client,
-        "Backup",
-        m_currentUdid.toUtf8().constData(),
-        NULL,  // source 通常为 NULL
-        options
-    );
-    
-    lib.plist_free(options);
-    
-    if (mb2_err != MOBILEBACKUP2_E_SUCCESS) {
-        qWarning() << "ContactManager: 发送备份请求失败，错误码:" << mb2_err;
-        lib.mobilebackup2_client_free(mb2_client);
-        emit errorOccurred(QString("发送备份请求失败，错误码: %1").arg(mb2_err));
-        return QString();
-    }
-    
-    qDebug() << "ContactManager: 备份请求已发送，开始处理备份数据...";
-    
-    // 处理备份协议消息循环
-    QString addressBookPath;
-    bool backupComplete = false;
-    int messageCount = 0;
-    const int maxMessages = 10000; // 安全限制
-    
-    while (!backupComplete && messageCount < maxMessages) {
-        plist_t msg_plist = nullptr;
-        char* dlmessage = nullptr;
-        
-        mb2_err = lib.mobilebackup2_receive_message(mb2_client, &msg_plist, &dlmessage);
-        
-        if (mb2_err != MOBILEBACKUP2_E_SUCCESS) {
-            if (msg_plist) {
-                lib.plist_free(msg_plist);
-                msg_plist = nullptr;
-            }
-            
-            if (mb2_err == MOBILEBACKUP2_E_RECEIVE_TIMEOUT) {
-                qDebug() << "ContactManager: 接收超时，继续等待...";
-                continue;
-            }
-            qWarning() << "ContactManager: 接收消息失败，错误码:" << mb2_err;
-            break;
-        }
-        
-        messageCount++;
-        
-        if (dlmessage) {
-            QString msgType = QString::fromUtf8(dlmessage);
-            qDebug() << "ContactManager: 收到消息类型:" << msgType;
-            
-            if (msgType == "DLMessageDownloadFiles") {
-                // 设备请求下载文件（从电脑到设备，用于恢复或检查状态）
-                qDebug() << "ContactManager: 处理文件下载请求（设备请求从电脑获取文件）...";
-                int result = handleDownloadFilesRequest(mb2_client, msg_plist, deviceBackupDir);
-                Q_UNUSED(result); // DLMessageDownloadFiles 仅需发送原始文件数据，不需要额外的 status 响应
-                
-            } else if (msgType == "DLMessageUploadFiles") {
-                // 设备上传文件给我们（用于备份）
-                qDebug() << "ContactManager: 处理文件上传（设备发送文件给我们，用于备份）...";
-                int result = handleUploadFiles(mb2_client, msg_plist, deviceBackupDir, addressBookPath);
-                // 上传后返回状态
-                lib.mobilebackup2_send_status_response(mb2_client, result, nullptr, nullptr);
-                
-            } else if (msgType == "DLMessageGetFreeDiskSpace") {
-                // 返回足够的磁盘空间
-                qDebug() << "ContactManager: 收到磁盘空间查询";
-                plist_t space_dict = lib.plist_new_dict();
-                // 返回 10GB 可用空间（使用 uint 类型）
-                lib.plist_dict_set_item(space_dict, "FreeSpace", lib.plist_new_uint(10737418240ULL));
-                lib.mobilebackup2_send_status_response(mb2_client, 0, nullptr, space_dict);
-                lib.plist_free(space_dict);
-                
-            } else if (msgType == "DLMessageCreateDirectory") {
-                // 创建目录请求
-                qDebug() << "ContactManager: 收到创建目录请求";
-                lib.mobilebackup2_send_status_response(mb2_client, 0, nullptr, nullptr);
-                
-            } else if (msgType == "DLMessageProcessMessage") {
-                // 处理一般消息
-                qDebug() << "ContactManager: 收到处理消息请求";
-                handleProcessMessage(msg_plist, backupComplete);
-                lib.mobilebackup2_send_status_response(mb2_client, 0, nullptr, nullptr);
-                
-            } else if (msgType == "DLMessageDisconnect") {
-                qDebug() << "ContactManager: 收到断开连接消息";
-                backupComplete = true;
-                
-            } else {
-                qDebug() << "ContactManager: 未处理的消息类型:" << msgType;
-                // 对未知消息发送成功响应以继续
-                lib.mobilebackup2_send_status_response(mb2_client, 0, nullptr, nullptr);
-            }
-            
-            // 注意: dlmessage 是由 libimobiledevice DLL 分配的内存。
-            // 由于 Windows 跨模块 CRT 堆隔离问题，在 EXE 中调用 free(dlmessage) 会导致崩溃。
-            // 因此这里不释放 dlmessage，会造成少量内存泄漏，但在实际使用场景下可接受。
-        }
-        
-        if (msg_plist) {
-            lib.plist_free(msg_plist);
-            msg_plist = nullptr;
-        }
-        
-        // 定期处理事件以防止 UI 卡死
-        if (messageCount % 10 == 0) {
-            QCoreApplication::processEvents();
-        }
-    }
-    
-    // 清理
-    lib.mobilebackup2_client_free(mb2_client);
-    
-    qDebug() << "ContactManager: 备份过程完成，处理了" << messageCount << "条消息";
-    
-    // 如果没有通过协议获取到文件，尝试在备份目录中查找
-    if (addressBookPath.isEmpty() || !QFile::exists(addressBookPath)) {
-        addressBookPath = findAddressBookInBackup(deviceBackupDir);
-    }
-    
-    if (addressBookPath.isEmpty() || !QFile::exists(addressBookPath)) {
-        qWarning() << "ContactManager: 未找到通讯录数据库文件";
-        emit errorOccurred("未在备份中找到通讯录数据库文件");
-        return QString();
-    }
-    
-    qDebug() << "ContactManager: 找到通讯录数据库:" << addressBookPath;
-    return addressBookPath;
-}
-
-int ContactManager::handleUploadFiles(mobilebackup2_client_t client, plist_t message,
-                                       const QString& backupDir, QString& addressBookPath)
-{
-    LibimobiledeviceDynamic& lib = LibimobiledeviceDynamic::instance();
-    
-    qDebug() << "ContactManager: handleUploadFiles - 开始处理设备上传文件";
-    
-    if (!message) {
-        qWarning() << "ContactManager: handleUploadFiles - message 为空";
-        return -1;
-    }
-    
-    // DLMessageUploadFiles 消息格式: [msgtype, files_array, ...]
-    plist_type msgType = lib.plist_get_node_type(message);
-    if (msgType != PLIST_ARRAY) {
-        qWarning() << "ContactManager: handleUploadFiles - message 不是 ARRAY 类型";
-        return -1;
-    }
-    
-    uint32_t array_size = lib.plist_array_get_size(message);
-    qDebug() << "ContactManager: handleUploadFiles - 数组大小:" << array_size;
-    
-    if (array_size < 2) {
-        qWarning() << "ContactManager: handleUploadFiles - 数组大小不足";
-        return -1;
-    }
-    
-    // 获取文件列表（索引1）
-    plist_t files_node = lib.plist_array_get_item(message, 1);
-    if (!files_node) {
-        qWarning() << "ContactManager: handleUploadFiles - 无法获取文件列表";
-        return -1;
-    }
-    
-    plist_type filesNodeType = lib.plist_get_node_type(files_node);
-    qDebug() << "ContactManager: handleUploadFiles - 文件列表类型:" << filesNodeType;
-    
-    int fileCount = 0;
-    
-    // 处理文件列表
-    if (filesNodeType == PLIST_ARRAY) {
-        uint32_t files_count = lib.plist_array_get_size(files_node);
-        qDebug() << "ContactManager: handleUploadFiles - 文件数量:" << files_count;
-        
-        for (uint32_t i = 0; i < files_count; i++) {
-            plist_t fileItem = lib.plist_array_get_item(files_node, i);
-            if (!fileItem) continue;
-            
-            plist_type fileItemType = lib.plist_get_node_type(fileItem);
-            
-            // 文件信息通常是字典类型
-            if (fileItemType != PLIST_DICT) {
-                qDebug() << "ContactManager: handleUploadFiles - 文件项[" << i << "]不是字典类型";
-                continue;
-            }
-            
-            // 获取文件路径
-            plist_t pathNode = lib.plist_dict_get_item(fileItem, "BackupFileInfo");
-            if (!pathNode) {
-                pathNode = lib.plist_dict_get_item(fileItem, "Path");
-            }
-            if (!pathNode) {
-                pathNode = lib.plist_dict_get_item(fileItem, "DLFileSource");
-            }
-            
-            QString filePath;
-            if (pathNode && lib.plist_get_node_type(pathNode) == PLIST_STRING) {
-                const char* strVal = lib.plist_get_string_ptr(pathNode, nullptr);
-                if (strVal) {
-                    filePath = QString::fromUtf8(strVal);
-                }
-            }
-            
-            if (filePath.isEmpty()) {
-                qDebug() << "ContactManager: handleUploadFiles - 文件项[" << i << "]没有路径信息";
-                continue;
-            }
-            
-            fileCount++;
-            qDebug() << "ContactManager: handleUploadFiles - 接收文件 #" << fileCount << ":" << filePath;
-            
-            // 计算目标路径
-            QString domain = "HomeDomain";
-            QString relativePath = filePath;
-            
-            // 移除可能的域前缀
-            if (relativePath.contains("-")) {
-                int dashPos = relativePath.indexOf("-");
-                relativePath = relativePath.mid(dashPos + 1);
-            }
-            
-            QString fileKey = domain + "-" + relativePath;
-            QByteArray hash = QCryptographicHash::hash(fileKey.toUtf8(), QCryptographicHash::Sha1);
-            QString hashStr = hash.toHex();
-            
-            // 创建目标目录（使用前两位作为子目录）
-            QString folder2 = hashStr.left(2);
-            QString targetDir = QDir(backupDir).filePath(folder2);
-            QDir().mkpath(targetDir);
-            
-            QString targetPath = QDir(targetDir).filePath(hashStr);
-            qDebug() << "ContactManager: handleUploadFiles - 目标路径:" << targetPath;
-            
-            // 接收文件数据
-            if (receiveFileData(client, targetPath)) {
-                qDebug() << "ContactManager: handleUploadFiles - 文件接收成功:" << targetPath;
-                
-                // 检查是否是通讯录数据库
-                if (filePath.contains("AddressBook.sqlitedb", Qt::CaseInsensitive) &&
-                    !filePath.contains("-shm") && !filePath.contains("-wal")) {
-                    qDebug() << "ContactManager: handleUploadFiles - 发现通讯录数据库!";
-                    addressBookPath = targetPath;
-                }
-            } else {
-                qWarning() << "ContactManager: handleUploadFiles - 文件接收失败:" << targetPath;
-            }
-        }
-    } else if (filesNodeType == PLIST_DICT) {
-        qDebug() << "ContactManager: handleUploadFiles - 文件列表是字典类型";
-        
-        // 遍历字典
+    if (entity_type == PLIST_DICT) {
+        // 遍历实体字典
         plist_dict_iter iter = nullptr;
-        lib.plist_dict_new_iter(files_node, &iter);
+        lib.plist_dict_new_iter(entities, &iter);
         
         if (iter) {
             char* key = nullptr;
             plist_t value = nullptr;
+            int item_count = 0;
             
             while (true) {
-                lib.plist_dict_next_item(files_node, iter, &key, &value);
+                lib.plist_dict_next_item(entities, iter, &key, &value);
                 if (!key) break;
                 
-                fileCount++;
-                QString keyStr = QString::fromUtf8(key);
-                qDebug() << "ContactManager: handleUploadFiles - 处理文件键:" << keyStr;
+                item_count++;
                 
-                // 处理文件上传（字典形式），这里保持日志，具体处理视协议而定
-            }
-        }
-    }
-    
-    qDebug() << "ContactManager: handleUploadFiles - 处理完成，共接收" << fileCount << "个文件";
-    return 0;  // 返回成功
-}
-
-int ContactManager::handleDownloadFilesRequest(mobilebackup2_client_t client, plist_t message,
-                                                const QString& backupDir)
-{
-    // 按照 idevicebackup2 的 mb2_handle_send_files() 实现
-    // 参考: tools/idevicebackup2.c:922
-    //
-    // 协议常量（来自 idevicebackup2.c）:
-    // CODE_SUCCESS = 0x00      - 文件传输成功
-    // CODE_FILE_DATA = 0x01    - 文件数据块
-    // CODE_ERROR_LOCAL = 0x0A  - 本地错误（文件不存在等）
-    
-    LibimobiledeviceDynamic& lib = LibimobiledeviceDynamic::instance();
-    
-    constexpr uint8_t CODE_SUCCESS = 0x00;
-    constexpr uint8_t CODE_FILE_DATA = 0x01;
-    constexpr uint8_t CODE_ERROR_LOCAL = 0x0A;
-    
-    // htobe32 辅助函数（主机字节序转大端）
-    auto htobe32_local = [](uint32_t val) -> uint32_t {
-        return ((val & 0xFF000000) >> 24) |
-               ((val & 0x00FF0000) >> 8) |
-               ((val & 0x0000FF00) << 8) |
-               ((val & 0x000000FF) << 24);
-    };
-    
-    qDebug() << "ContactManager: handleDownloadFilesRequest - 开始处理";
-    
-    plist_t errplist = nullptr;
-    
-    // 辅助函数：添加文件错误到 errplist
-    auto add_file_error = [&](const char* path, int error_code, const char* error_message) {
-        if (!errplist) {
-            errplist = lib.plist_new_dict();
-        }
-        plist_t filedict = lib.plist_new_dict();
-        lib.plist_dict_set_item(filedict, "DLFileErrorString", lib.plist_new_string(error_message));
-        lib.plist_dict_set_item(filedict, "DLFileErrorCode", lib.plist_new_int((int64_t)error_code));
-        lib.plist_dict_set_item(errplist, path, filedict);
-    };
-    
-    // errno 到设备错误码的映射
-    auto errno_to_device_error = [](int errno_value) -> int {
-        switch (errno_value) {
-            case ENOENT: return -6;
-            case EEXIST: return -7;
-            default: return -1;
-        }
-    };
-    
-    if (!message) {
-        qWarning() << "ContactManager: handleDownloadFilesRequest - message 为空";
-        return -1;
-    }
-    
-    // 验证消息格式
-    plist_type msgType = lib.plist_get_node_type(message);
-    if (msgType != PLIST_ARRAY) {
-        qWarning() << "ContactManager: handleDownloadFilesRequest - message 不是 ARRAY 类型";
-        return -1;
-    }
-    
-    uint32_t array_size = lib.plist_array_get_size(message);
-    if (array_size < 2) {
-        qWarning() << "ContactManager: handleDownloadFilesRequest - 数组大小不足";
-        return -1;
-    }
-    
-    // 获取文件列表（索引1）
-    plist_t files = lib.plist_array_get_item(message, 1);
-    if (!files) {
-        qWarning() << "ContactManager: handleDownloadFilesRequest - 无法获取文件列表";
-        return -1;
-    }
-    
-    uint32_t cnt = lib.plist_array_get_size(files);
-    qDebug() << "ContactManager: handleDownloadFilesRequest - 文件数量:" << cnt;
-    
-    // 处理每个文件请求
-    for (uint32_t i = 0; i < cnt; i++) {
-        plist_t val = lib.plist_array_get_item(files, i);
-        if (!val || lib.plist_get_node_type(val) != PLIST_STRING) {
-            continue;
-        }
-        
-        const char* path = lib.plist_get_string_ptr(val, nullptr);
-        if (!path) {
-            continue;
-        }
-        
-        QString pathStr = QString::fromUtf8(path);
-        qDebug() << "ContactManager: handleDownloadFilesRequest - 处理文件:" << pathStr;
-        
-        uint32_t pathlen = strlen(path);
-        uint32_t bytes = 0;
-        
-        // === 步骤1：发送路径长度（4字节 BE） ===
-        uint32_t nlen = htobe32_local(pathlen);
-        if (lib.mobilebackup2_send_raw(client, (const char*)&nlen, 4, &bytes) != MOBILEBACKUP2_E_SUCCESS || bytes != 4) {
-            qWarning() << "ContactManager: 发送路径长度失败";
-            continue;
-        }
-        
-        // === 步骤2：发送路径字符串 ===
-        if (lib.mobilebackup2_send_raw(client, path, pathlen, &bytes) != MOBILEBACKUP2_E_SUCCESS || bytes != pathlen) {
-            qWarning() << "ContactManager: 发送路径失败";
-            continue;
-        }
-        
-        // === 步骤3：检查文件是否存在并发送内容或错误 ===
-        // 构造本地文件路径
-        QString localPath;
-        if (pathStr.contains("/")) {
-            QStringList parts = pathStr.split("/");
-            // 如果路径以 UDID 开头，跳过 UDID 部分
-            if (parts.size() > 1 && parts[0] == m_currentUdid) {
-                localPath = QDir(backupDir).filePath(parts.mid(1).join("/"));
-            } else {
-                localPath = QDir(backupDir).filePath(pathStr);
-            }
-        } else {
-            localPath = QDir(backupDir).filePath(pathStr);
-        }
-        
-        qDebug() << "ContactManager: handleDownloadFilesRequest - 本地路径:" << localPath;
-        
-        QFileInfo fileInfo(localPath);
-        
-        if (fileInfo.exists() && fileInfo.isFile()) {
-            // 文件存在，发送文件内容
-            QFile f(localPath);
-            if (!f.open(QIODevice::ReadOnly)) {
-                qWarning() << "ContactManager: 无法打开文件:" << localPath;
-                // 发送错误帧
-                const char* errmsg = "Cannot open file";
-                uint32_t errlen = strlen(errmsg);
-                nlen = htobe32_local(errlen + 1);
-                char header[5];
-                memcpy(header, &nlen, 4);
-                header[4] = CODE_ERROR_LOCAL;
-                lib.mobilebackup2_send_raw(client, header, 5, &bytes);
-                lib.mobilebackup2_send_raw(client, errmsg, errlen, &bytes);
-                add_file_error(path, errno_to_device_error(errno), errmsg);
-                continue;
-            }
-            
-            qint64 total = f.size();
-            qDebug() << "ContactManager: handleDownloadFilesRequest - 文件大小:" << total;
-            
-            if (total == 0) {
-                // 空文件，直接发送成功帧
-                nlen = htobe32_local(1);
-                char header[5];
-                memcpy(header, &nlen, 4);
-                header[4] = CODE_SUCCESS;
-                lib.mobilebackup2_send_raw(client, header, 5, &bytes);
-            } else {
-                // 发送文件内容
-                char buf[32768];
-                qint64 sent_total = 0;
-                
-                while (sent_total < total) {
-                    qint64 to_read = qMin((qint64)sizeof(buf), total - sent_total);
-                    qint64 r = f.read(buf, to_read);
-                    if (r <= 0) {
-                        qWarning() << "ContactManager: 读取文件失败";
-                        break;
-                    }
-                    
-                    // 发送数据帧头：长度+1, CODE_FILE_DATA
-                    nlen = htobe32_local((uint32_t)r + 1);
-                    char header[5];
-                    memcpy(header, &nlen, 4);
-                    header[4] = CODE_FILE_DATA;
-                    
-                    if (lib.mobilebackup2_send_raw(client, header, 5, &bytes) != MOBILEBACKUP2_E_SUCCESS || bytes != 5) {
-                        qWarning() << "ContactManager: 发送数据帧头失败";
-                        break;
-                    }
-                    
-                    // 发送文件数据
-                    if (lib.mobilebackup2_send_raw(client, buf, (uint32_t)r, &bytes) != MOBILEBACKUP2_E_SUCCESS || bytes != (uint32_t)r) {
-                        qWarning() << "ContactManager: 发送文件数据失败";
-                        break;
-                    }
-                    
-                    sent_total += r;
-                }
-                
-                // 发送成功帧
-                nlen = htobe32_local(1);
-                char header[5];
-                memcpy(header, &nlen, 4);
-                header[4] = CODE_SUCCESS;
-                lib.mobilebackup2_send_raw(client, header, 5, &bytes);
-            }
-            
-            f.close();
-            qDebug() << "ContactManager: handleDownloadFilesRequest - 文件发送完成:" << pathStr;
-        } else {
-            // 文件不存在，发送错误帧
-            qDebug() << "ContactManager: handleDownloadFilesRequest - 文件不存在:" << localPath;
-            const char* errmsg = "No such file or directory";
-            uint32_t errlen = strlen(errmsg);
-            
-            // 按照参考实现，将帧头和错误消息合并成一次发送
-            char buf[256];
-            nlen = htobe32_local(errlen + 1);
-            memcpy(buf, &nlen, 4);
-            buf[4] = CODE_ERROR_LOCAL;
-            uint32_t slen = 5;
-            memcpy(buf + slen, errmsg, errlen);
-            slen += errlen;
-            
-            lib.mobilebackup2_send_raw(client, buf, slen, &bytes);
-            
-            // 按照参考实现，将错误添加到 errplist
-            add_file_error(path, errno_to_device_error(ENOENT), errmsg);
-        }
-    }
-    
-    // === 发送终止标记（4字节零） ===
-    uint32_t zero = 0;
-    uint32_t bytes = 0;
-    lib.mobilebackup2_send_raw(client, (const char*)&zero, 4, &bytes);
-    qDebug() << "ContactManager: handleDownloadFilesRequest - 已发送终止标记";
-    
-    // === 发送状态响应 ===
-    if (!errplist) {
-        plist_t emptydict = lib.plist_new_dict();
-        lib.mobilebackup2_send_status_response(client, 0, NULL, emptydict);
-        lib.plist_free(emptydict);
-        qDebug() << "ContactManager: handleDownloadFilesRequest - 已发送成功状态响应";
-    } else {
-        lib.mobilebackup2_send_status_response(client, -13, "Multi status", errplist);
-        lib.plist_free(errplist);
-        qDebug() << "ContactManager: handleDownloadFilesRequest - 已发送 Multi status 错误响应";
-    }
-    
-    qDebug() << "ContactManager: handleDownloadFilesRequest - 处理完成";
-    return 0;
-}
-
-bool ContactManager::receiveFileData(mobilebackup2_client_t client, const QString& targetPath)
-{
-    LibimobiledeviceDynamic& lib = LibimobiledeviceDynamic::instance();
-    
-    QFile file(targetPath);
-    if (!file.open(QIODevice::WriteOnly)) {
-        qWarning() << "ContactManager: 无法创建文件:" << targetPath;
-        return false;
-    }
-    
-    // 接收文件数据
-    char buffer[65536];
-    uint32_t bytes_received = 0;
-    uint64_t total_received = 0;
-    
-    while (true) {
-        mobilebackup2_error_t err = lib.mobilebackup2_receive_raw(
-            client, buffer, sizeof(buffer), &bytes_received);
-        
-        if (err != MOBILEBACKUP2_E_SUCCESS || bytes_received == 0) {
-            break;
-        }
-        
-        file.write(buffer, bytes_received);
-        total_received += bytes_received;
-    }
-    
-    file.close();
-    
-    qDebug() << "ContactManager: 接收文件完成，大小:" << total_received << "字节";
-    return total_received > 0;
-}
-
-void ContactManager::handleProcessMessage(plist_t message, bool& backupComplete)
-{
-    LibimobiledeviceDynamic& lib = LibimobiledeviceDynamic::instance();
-    
-    if (!message) return;
-    
-    // 打印完整的消息内容以便调试
-    char* xml_out = nullptr;
-    uint32_t xml_len = 0;
-    lib.plist_to_xml(message, &xml_out, &xml_len);
-    if (xml_out) {
-        qDebug() << "ContactManager: DLMessageProcessMessage 内容:" << QString::fromUtf8(xml_out, xml_len);
-        if (lib.plist_mem_free) {
-            lib.plist_mem_free(xml_out);
-        }
-    }
-    
-    // 检查消息内容，判断备份是否完成或出错
-    if (lib.plist_get_node_type(message) == PLIST_ARRAY) {
-        uint32_t array_size = lib.plist_array_get_size(message);
-        qDebug() << "ContactManager: ProcessMessage 数组大小:" << array_size;
-        
-        if (array_size >= 2) {
-            plist_t status_dict = lib.plist_array_get_item(message, 1);
-            if (status_dict && lib.plist_get_node_type(status_dict) == PLIST_DICT) {
-                // 检查是否有错误
-                plist_t errorNode = lib.plist_dict_get_item(status_dict, "ErrorCode");
-                if (errorNode) {
-                    uint64_t errorCode = 0;
-                    lib.plist_get_uint_val(errorNode, &errorCode);
-                    qDebug() << "ContactManager: ProcessMessage 错误码:" << errorCode;
-                    
-                    plist_t errorMsg = lib.plist_dict_get_item(status_dict, "ErrorMessage");
-                    if (errorMsg && lib.plist_get_node_type(errorMsg) == PLIST_STRING) {
-                        const char* msg = lib.plist_get_string_ptr(errorMsg, nullptr);
-                        if (msg) {
-                            qDebug() << "ContactManager: ProcessMessage 错误信息:" << msg;
+                // 打印前3个联系人的完整 plist 结构（调试用）
+                if (item_count <= 3) {
+                    char* item_xml = nullptr;
+                    uint32_t item_xml_len = 0;
+                    lib.plist_to_xml(value, &item_xml, &item_xml_len);
+                    if (item_xml && item_xml_len > 0) {
+                        QString itemXml = QString::fromUtf8(item_xml, qMin((uint32_t)2000, item_xml_len));
+                        qDebug() << "ContactManager: [调试] 联系人" << item_count << "(ID:" << key << ") 完整结构:";
+                        qDebug().noquote() << itemXml;
+                        if (lib.plist_mem_free) {
+                            lib.plist_mem_free(item_xml);
                         }
                     }
                 }
                 
-                // 检查备份是否完成
-                plist_t finished = lib.plist_dict_get_item(status_dict, "BackupFinished");
-                if (finished) {
-                    uint8_t val = 0;
-                    lib.plist_get_bool_val(finished, &val);
-                    if (val) {
-                        qDebug() << "ContactManager: 备份已完成";
-                        backupComplete = true;
+                // 每个键是联系人的 ID，值是联系人数据
+                Contact contact = parseContactFromPlist(value);
+                if (!contact.id.isEmpty() || !contact.fullName().isEmpty()) {
+                    if (contact.id.isEmpty()) {
+                        contact.id = QString::fromUtf8(key);
                     }
+                    contacts.append(contact);
                 }
                 
-                // 检查备份状态
-                plist_t backupState = lib.plist_dict_get_item(status_dict, "BackupState");
-                if (backupState && lib.plist_get_node_type(backupState) == PLIST_STRING) {
-                    const char* state = lib.plist_get_string_ptr(backupState, nullptr);
-                    if (state) {
-                        qDebug() << "ContactManager: 备份状态:" << state;
+                // 注意：key 由库分配，但我们无法安全释放它（跨 DLL 堆问题）
+            }
+            
+            // 注意：iter 由库分配，但我们无法安全释放它
+        }
+    } else if (entity_type == PLIST_ARRAY) {
+        // 遍历实体数组
+        uint32_t count = lib.plist_array_get_size(entities);
+        for (uint32_t i = 0; i < count; i++) {
+            plist_t item = lib.plist_array_get_item(entities, i);
+            if (item) {
+                Contact contact = parseContactFromPlist(item);
+                if (!contact.id.isEmpty() || !contact.fullName().isEmpty()) {
+                    if (contact.id.isEmpty()) {
+                        contact.id = QString::number(i);
                     }
+                    contacts.append(contact);
                 }
             }
         }
     }
+    
+    return contacts;
 }
 
-QString ContactManager::findAddressBookInBackup(const QString& backupDir)
+Contact ContactManager::parseContactFromPlist(plist_t contactDict) const
 {
-    // 计算 AddressBook.sqlitedb 的哈希路径
-    QString domain = "HomeDomain";
-    QString relativePath = "Library/AddressBook/AddressBook.sqlitedb";
-    QString fileKey = domain + "-" + relativePath;
+    Contact contact;
+    LibimobiledeviceDynamic& lib = LibimobiledeviceDynamic::instance();
     
-    QByteArray hash = QCryptographicHash::hash(fileKey.toUtf8(), QCryptographicHash::Sha1);
-    QString hashStr = hash.toHex();
-    
-    qDebug() << "ContactManager: 搜索通讯录数据库，Hash:" << hashStr;
-    
-    // 检查不同层级的目录结构
-    // 结构1: <backupDir>/<hash> (旧版)
-    // 结构2: <backupDir>/<hash_first_2_chars>/<hash> (新版 iOS 10+)
-    // 结构3: <backupDir>/Snapshot/<hash_first_2_chars>/<hash> (idevicebackup2 风格)
-    
-    QString folder2 = hashStr.left(2);
-    
-    // 候选路径列表（按优先级排序）
-    QStringList candidatePaths = {
-        QDir(backupDir).filePath("Snapshot/" + folder2 + "/" + hashStr),  // idevicebackup2 风格
-        QDir(backupDir).filePath(folder2 + "/" + hashStr),                // 新版 iOS 10+
-        QDir(backupDir).filePath(hashStr),                                 // 旧版
-    };
-    
-    for (const QString& path : candidatePaths) {
-        qDebug() << "ContactManager: 检查路径:" << path;
-        if (QFile::exists(path)) {
-            qDebug() << "ContactManager: 找到通讯录数据库:" << path;
-            return path;
-        }
+    if (!contactDict || lib.plist_get_node_type(contactDict) != PLIST_DICT) {
+        return contact;
     }
     
-    qWarning() << "ContactManager: 未在备份中找到通讯录数据库文件";
-    qWarning() << "ContactManager: 搜索 Hash:" << hashStr;
-    for (const QString& path : candidatePaths) {
-        qWarning() << "ContactManager: 已尝试路径:" << path;
+    // 获取联系人 ID
+    contact.id = getStringValue(contactDict, "com.apple.syncdevicedatabase.RecordId");
+    if (contact.id.isEmpty()) {
+        contact.id = getStringValue(contactDict, "RecordId");
     }
     
-    return QString();
-}
-
-bool ContactManager::readContactsFromDB(const QString& dbPath)
-{
-    m_contacts.clear();
+    // 获取姓名
+    contact.firstName = getStringValue(contactDict, "first name");
+    if (contact.firstName.isEmpty()) {
+        contact.firstName = getStringValue(contactDict, "First");
+    }
     
-    // 添加 SQLite 数据库连接
-    // 使用唯一的连接名称以避免冲突
-    QString connectionName = "ContactDB_" + QString::number(QCoreApplication::applicationPid());
+    contact.lastName = getStringValue(contactDict, "last name");
+    if (contact.lastName.isEmpty()) {
+        contact.lastName = getStringValue(contactDict, "Last");
+    }
     
-    {
-        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", connectionName);
-        db.setDatabaseName(dbPath);
-        
-        if (!db.open()) {
-            qCritical() << "ContactManager: 无法打开数据库:" << db.lastError().text();
-            return false;
-        }
-        
-        // 查询联系人
-        // ABPerson 表包含联系人基本信息
-        QSqlQuery query(db);
-        
-        // 尝试查询 ABPerson 表
-        QString sql = "SELECT ROWID, First, Last, Organization, Note FROM ABPerson";
-        
-        if (!query.exec(sql)) {
-            qCritical() << "ContactManager: 查询失败:" << query.lastError().text();
-            // 尝试列出所有表以便调试
-            qDebug() << "ContactManager: 数据库表列表:" << db.tables();
-            return false;
-        }
-        
-        while (query.next()) {
-            Contact contact;
-            int rowId = query.value(0).toInt();
-            contact.id = QString::number(rowId);
-            contact.firstName = query.value(1).toString();
-            contact.lastName = query.value(2).toString();
-            contact.organization = query.value(3).toString();
-            contact.note = query.value(4).toString();
-            
-            // 获取电话号码
-            QSqlQuery phoneQuery(db);
-            phoneQuery.prepare("SELECT value FROM ABMultiValue WHERE record_id = ? AND property = 3");
-            phoneQuery.addBindValue(rowId);
-            if (phoneQuery.exec()) {
-                while (phoneQuery.next()) {
-                    QString phone = phoneQuery.value(0).toString();
-                    // 清理电话号码中的特殊字符
-                    phone = phone.remove(QRegularExpression("[^0-9+*#]"));
+    // 显示名称
+    contact.displayName = getStringValue(contactDict, "display name");
+    if (contact.displayName.isEmpty()) {
+        contact.displayName = getStringValue(contactDict, "DisplayName");
+    }
+    
+    // 组织
+    contact.organization = getStringValue(contactDict, "organization");
+    if (contact.organization.isEmpty()) {
+        contact.organization = getStringValue(contactDict, "Organization");
+    }
+    
+    // 备注
+    contact.note = getStringValue(contactDict, "notes");
+    if (contact.note.isEmpty()) {
+        contact.note = getStringValue(contactDict, "Note");
+    }
+    
+    // 获取电话号码
+    plist_t phones = lib.plist_dict_get_item(contactDict, "phone number");
+    if (!phones) {
+        phones = lib.plist_dict_get_item(contactDict, "phone numbers");
+    }
+    if (phones) {
+        plist_type phones_type = lib.plist_get_node_type(phones);
+        if (phones_type == PLIST_ARRAY) {
+            uint32_t phone_count = lib.plist_array_get_size(phones);
+            for (uint32_t i = 0; i < phone_count; i++) {
+                plist_t phone_item = lib.plist_array_get_item(phones, i);
+                if (phone_item) {
+                    QString phone;
+                    if (lib.plist_get_node_type(phone_item) == PLIST_STRING) {
+                        const char* val = lib.plist_get_string_ptr(phone_item, nullptr);
+                        if (val) {
+                            phone = QString::fromUtf8(val);
+                        }
+                    } else if (lib.plist_get_node_type(phone_item) == PLIST_DICT) {
+                        phone = getStringValue(phone_item, "value");
+                        if (phone.isEmpty()) {
+                            phone = getStringValue(phone_item, "Value");
+                        }
+                    }
                     if (!phone.isEmpty()) {
                         contact.phoneNumbers.append(phone);
                     }
                 }
             }
-            
-            // 获取邮箱
-            QSqlQuery emailQuery(db);
-            emailQuery.prepare("SELECT value FROM ABMultiValue WHERE record_id = ? AND property = 4");
-            emailQuery.addBindValue(rowId);
-            if (emailQuery.exec()) {
-                while (emailQuery.next()) {
-                    contact.emails.append(emailQuery.value(0).toString());
+        } else if (phones_type == PLIST_DICT) {
+            // 遍历电话号码字典
+            plist_dict_iter iter = nullptr;
+            lib.plist_dict_new_iter(phones, &iter);
+            if (iter) {
+                char* key = nullptr;
+                plist_t value = nullptr;
+                while (true) {
+                    lib.plist_dict_next_item(phones, iter, &key, &value);
+                    if (!key) break;
+                    
+                    QString phone;
+                    if (lib.plist_get_node_type(value) == PLIST_STRING) {
+                        const char* val = lib.plist_get_string_ptr(value, nullptr);
+                        if (val) {
+                            phone = QString::fromUtf8(val);
+                        }
+                    } else if (lib.plist_get_node_type(value) == PLIST_DICT) {
+                        phone = getStringValue(value, "value");
+                    }
+                    if (!phone.isEmpty()) {
+                        contact.phoneNumbers.append(phone);
+                    }
                 }
             }
-            
-            // 仅添加有效的联系人
-            if (!contact.fullName().isEmpty() || !contact.phoneNumbers.isEmpty()) {
-                m_contacts.append(contact);
-            }
         }
-        
-        db.close();
     }
     
-    // 移除连接
-    QSqlDatabase::removeDatabase(connectionName);
+    // 获取邮箱
+    plist_t emails = lib.plist_dict_get_item(contactDict, "email address");
+    if (!emails) {
+        emails = lib.plist_dict_get_item(contactDict, "email addresses");
+    }
+    if (emails) {
+        plist_type emails_type = lib.plist_get_node_type(emails);
+        if (emails_type == PLIST_ARRAY) {
+            uint32_t email_count = lib.plist_array_get_size(emails);
+            for (uint32_t i = 0; i < email_count; i++) {
+                plist_t email_item = lib.plist_array_get_item(emails, i);
+                if (email_item) {
+                    QString email;
+                    if (lib.plist_get_node_type(email_item) == PLIST_STRING) {
+                        const char* val = lib.plist_get_string_ptr(email_item, nullptr);
+                        if (val) {
+                            email = QString::fromUtf8(val);
+                        }
+                    } else if (lib.plist_get_node_type(email_item) == PLIST_DICT) {
+                        email = getStringValue(email_item, "value");
+                        if (email.isEmpty()) {
+                            email = getStringValue(email_item, "Value");
+                        }
+                    }
+                    if (!email.isEmpty()) {
+                        contact.emails.append(email);
+                    }
+                }
+            }
+        } else if (emails_type == PLIST_DICT) {
+            plist_dict_iter iter = nullptr;
+            lib.plist_dict_new_iter(emails, &iter);
+            if (iter) {
+                char* key = nullptr;
+                plist_t value = nullptr;
+                while (true) {
+                    lib.plist_dict_next_item(emails, iter, &key, &value);
+                    if (!key) break;
+                    
+                    QString email;
+                    if (lib.plist_get_node_type(value) == PLIST_STRING) {
+                        const char* val = lib.plist_get_string_ptr(value, nullptr);
+                        if (val) {
+                            email = QString::fromUtf8(val);
+                        }
+                    } else if (lib.plist_get_node_type(value) == PLIST_DICT) {
+                        email = getStringValue(value, "value");
+                    }
+                    if (!email.isEmpty()) {
+                        contact.emails.append(email);
+                    }
+                }
+            }
+        }
+    }
     
-    return true;
-}
-
-// 保留辅助函数以满足接口，但暂时未使用
-Contact ContactManager::parseContact(plist_t plist) const
-{
-    Q_UNUSED(plist);
-    return Contact();
+    return contact;
 }
 
 QString ContactManager::getStringValue(plist_t dict, const char *key) const
 {
-    Q_UNUSED(dict);
-    Q_UNUSED(key);
+    LibimobiledeviceDynamic& lib = LibimobiledeviceDynamic::instance();
+    
+    if (!dict || !key) {
+        return QString();
+    }
+    
+    plist_t node = lib.plist_dict_get_item(dict, key);
+    if (!node) {
+        return QString();
+    }
+    
+    if (lib.plist_get_node_type(node) != PLIST_STRING) {
+        return QString();
+    }
+    
+    const char* val = lib.plist_get_string_ptr(node, nullptr);
+    if (val) {
+        return QString::fromUtf8(val);
+    }
+    
     return QString();
 }
 
 QStringList ContactManager::extractStringArray(plist_t array) const
 {
-    Q_UNUSED(array);
-    return QStringList();
+    QStringList result;
+    LibimobiledeviceDynamic& lib = LibimobiledeviceDynamic::instance();
+    
+    if (!array || lib.plist_get_node_type(array) != PLIST_ARRAY) {
+        return result;
+    }
+    
+    uint32_t count = lib.plist_array_get_size(array);
+    for (uint32_t i = 0; i < count; i++) {
+        plist_t item = lib.plist_array_get_item(array, i);
+        if (item && lib.plist_get_node_type(item) == PLIST_STRING) {
+            const char* val = lib.plist_get_string_ptr(item, nullptr);
+            if (val) {
+                result.append(QString::fromUtf8(val));
+            }
+        }
+    }
+    
+    return result;
+}
+
+QString ContactManager::generateComputerAnchor() const
+{
+    // 生成唯一的计算机锚点（使用时间戳和 UUID）
+    QString timestamp = QDateTime::currentDateTime().toString("yyyyMMddHHmmsszzz");
+    QString uuid = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    return QString("phone-linkc-%1-%2").arg(timestamp, uuid.left(8));
+}
+
+void ContactManager::loadAnchors()
+{
+    // 从配置文件加载锚点
+    // 使用 %appdata%/iPhonLinkC/ 目录
+    QString configPath = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/iPhonLinkC";
+    QDir().mkpath(configPath);
+    
+    QString anchorFile = QDir(configPath).filePath(QString("anchors_%1.json").arg(m_currentUdid));
+    
+    QFile file(anchorFile);
+    if (file.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        file.close();
+        
+        if (doc.isObject()) {
+            QJsonObject obj = doc.object();
+            m_deviceAnchor = obj["deviceAnchor"].toString();
+            m_computerAnchor = obj["computerAnchor"].toString();
+            qDebug() << "ContactManager: 已加载锚点 - 设备:" << m_deviceAnchor << "计算机:" << m_computerAnchor;
+        }
+    } else {
+        qDebug() << "ContactManager: 无已保存的锚点，将进行完整同步";
+        m_deviceAnchor.clear();
+        m_computerAnchor.clear();
+    }
+}
+
+void ContactManager::saveAnchors()
+{
+    // 保存锚点到配置文件
+    // 使用 %appdata%/iPhonLinkC/ 目录
+    QString configPath = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/iPhonLinkC";
+    QDir().mkpath(configPath);
+    
+    QString anchorFile = QDir(configPath).filePath(QString("anchors_%1.json").arg(m_currentUdid));
+    
+    QJsonObject obj;
+    obj["deviceAnchor"] = m_deviceAnchor;
+    obj["computerAnchor"] = m_computerAnchor;
+    obj["lastSync"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    
+    QFile file(anchorFile);
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(QJsonDocument(obj).toJson());
+        file.close();
+        qDebug() << "ContactManager: 已保存锚点到" << anchorFile;
+    } else {
+        qWarning() << "ContactManager: 无法保存锚点到" << anchorFile;
+    }
 }
 
 QVector<Contact> ContactManager::searchContacts(const QString &keyword) const

@@ -6,9 +6,8 @@
 #include <QStringList>
 #include <QVector>
 #include <QMap>
-#include <QSqlDatabase>
 #include <libimobiledevice/libimobiledevice.h>
-#include <libimobiledevice/mobilebackup2.h>
+#include <libimobiledevice/mobilesync.h>
 #include <plist/plist.h>
 
 /**
@@ -44,7 +43,7 @@ struct Contact {
 /**
  * @brief 通讯录管理器类
  * 
- * 负责与 iOS 设备同步通讯录数据，使用 mobilebackup2 协议
+ * 负责与 iOS 设备同步通讯录数据，使用 mobilesync 协议
  * 通过动态加载的 libimobiledevice DLL 函数实现
  */
 class ContactManager : public QObject
@@ -124,89 +123,65 @@ private:
     // libimobiledevice 句柄
     idevice_t m_device;
     
+    // 保存的锚点（用于增量同步）
+    QString m_deviceAnchor;
+    QString m_computerAnchor;
+    
     /**
      * @brief 清理资源
      */
     void cleanup();
     
     /**
-     * @brief 执行备份并获取通讯录数据库（使用 mobilebackup2 API）
-     * @param backupPath 备份保存路径
-     * @return 数据库文件路径，失败返回空字符串
+     * @brief 使用 mobilesync 协议同步通讯录
+     * @return 是否同步成功
      */
-    QString performBackupAndGetDB(const QString& backupPath);
-
-    /**
-     * @brief 从 SQLite 数据库读取联系人
-     * @param dbPath 数据库文件路径
-     * @return 是否读取成功
-     */
-    bool readContactsFromDB(const QString& dbPath);
+    bool syncContactsViaMobileSync();
     
     /**
-     * @brief 处理 DLMessageDownloadFiles 消息（设备请求从电脑下载文件）
-     * @param client mobilebackup2 客户端
-     * @param message 消息 plist
-     * @param backupDir 备份目录
-     * @return 状态码，0表示成功，-1表示失败
+     * @brief 解析联系人实体（从 mobilesync plist 数据）
+     * @param entities 实体 plist
+     * @return 解析的联系人列表
      */
-    int handleDownloadFilesRequest(mobilebackup2_client_t client, plist_t message,
-                                    const QString& backupDir);
+    QVector<Contact> parseContactEntities(plist_t entities);
     
     /**
-     * @brief 处理 DLMessageUploadFiles 消息（设备上传文件到电脑，用于备份）
-     * @param client mobilebackup2 客户端
-     * @param message 消息 plist
-     * @param backupDir 备份目录
-     * @param addressBookPath [out] 找到的通讯录数据库路径
-     * @return 状态码，0表示成功，-1表示失败
+     * @brief 从 plist 字典解析单个联系人
+     * @param contactDict 联系人字典
+     * @return 解析的联系人
      */
-    int handleUploadFiles(mobilebackup2_client_t client, plist_t message,
-                          const QString& backupDir, QString& addressBookPath);
+    Contact parseContactFromPlist(plist_t contactDict) const;
     
     /**
-     * @brief 发送文件给设备（用于 DLMessageDownloadFiles 响应）
-     * @param client mobilebackup2 客户端
-     * @param filePath 要发送的文件路径
-     * @return 是否发送成功
+     * @brief 获取 plist 字典中的字符串值
+     * @param dict plist 字典
+     * @param key 键名
+     * @return 字符串值
      */
-    bool sendFileToDevice(mobilebackup2_client_t client, const QString& filePath);
-    
-    /**
-     * @brief 从设备接收文件数据（用于 DLMessageUploadFiles）
-     * @param client mobilebackup2 客户端
-     * @param targetPath 目标文件路径
-     * @param fileInfo 文件信息 plist
-     * @return 接收的字节数
-     */
-    uint64_t receiveFileFromDevice(mobilebackup2_client_t client, const QString& targetPath, plist_t fileInfo);
-    
-    /**
-     * @brief 从设备接收文件数据（简化版本）
-     * @param client mobilebackup2 客户端
-     * @param targetPath 目标文件路径
-     * @return 是否接收成功
-     */
-    bool receiveFileData(mobilebackup2_client_t client, const QString& targetPath);
-    
-    /**
-     * @brief 处理 mobilebackup2 处理消息
-     * @param message 消息 plist
-     * @param backupComplete [out] 备份是否完成
-     */
-    void handleProcessMessage(plist_t message, bool& backupComplete);
-    
-    /**
-     * @brief 在备份目录中查找通讯录数据库
-     * @param backupDir 备份目录
-     * @return 数据库文件路径，未找到返回空字符串
-     */
-    QString findAddressBookInBackup(const QString& backupDir);
-    
-    // 保留的辅助函数（用于 plist 解析）
-    Contact parseContact(plist_t plist) const;
     QString getStringValue(plist_t dict, const char *key) const;
+    
+    /**
+     * @brief 从 plist 数组提取字符串列表
+     * @param array plist 数组
+     * @return 字符串列表
+     */
     QStringList extractStringArray(plist_t array) const;
+    
+    /**
+     * @brief 生成新的计算机锚点
+     * @return 锚点字符串
+     */
+    QString generateComputerAnchor() const;
+    
+    /**
+     * @brief 加载保存的锚点
+     */
+    void loadAnchors();
+    
+    /**
+     * @brief 保存锚点到本地
+     */
+    void saveAnchors();
 };
 
 #endif // CONTACTMANAGER_H
