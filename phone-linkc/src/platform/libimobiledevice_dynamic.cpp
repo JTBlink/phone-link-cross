@@ -51,8 +51,10 @@ LibimobiledeviceDynamic::LibimobiledeviceDynamic()
     plist_new_array = nullptr;
     plist_array_append_item = nullptr;
     plist_new_uint = nullptr;
+    plist_new_int = nullptr;
     plist_new_date = nullptr;
     plist_to_xml = nullptr;
+    plist_to_bin = nullptr;
     plist_mem_free = nullptr;
     
     // installation_proxy 函数指针
@@ -276,8 +278,10 @@ bool LibimobiledeviceDynamic::initialize()
     success &= loadAndTrack("plist_new_array", plist_new_array, m_plistLib);
     success &= loadAndTrack("plist_array_append_item", plist_array_append_item, m_plistLib);
     success &= loadAndTrack("plist_new_uint", plist_new_uint, m_plistLib);
+    success &= loadAndTrack("plist_new_int", plist_new_int, m_plistLib);
     success &= loadAndTrack("plist_new_date", plist_new_date, m_plistLib);
     success &= loadAndTrack("plist_to_xml", plist_to_xml, m_plistLib);
+    success &= loadAndTrack("plist_to_bin", plist_to_bin, m_plistLib);
     success &= loadAndTrack("plist_mem_free", plist_mem_free, m_plistLib);
     
     // 加载 instproxy 函数
@@ -403,6 +407,7 @@ void LibimobiledeviceDynamic::cleanup()
     plist_new_uint = nullptr;
     plist_new_date = nullptr;
     plist_to_xml = nullptr;
+    plist_to_bin = nullptr;
     plist_mem_free = nullptr;
     
     instproxy_client_new = nullptr;

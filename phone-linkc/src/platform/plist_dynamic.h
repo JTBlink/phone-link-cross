@@ -241,6 +241,16 @@ typedef void (*plist_array_append_item_func)(plist_t node, plist_t item);
 typedef plist_t (*plist_new_uint_func)(uint64_t val);
 
 /**
+ * Create a new plist_t type #PLIST_INT with a signed integer value
+ *
+ * @param val the signed integer value
+ * @return the created item
+ *
+ * @原型 plist_t plist_new_int(int64_t val);
+ */
+typedef plist_t (*plist_new_int_func)(int64_t val);
+
+/**
  * Create a new plist_t type #PLIST_DATE
  *
  * @param sec the number of seconds since 01/01/2001
@@ -262,6 +272,17 @@ typedef plist_t (*plist_new_date_func)(int32_t sec, int32_t usec);
  * @原型 void plist_to_xml(plist_t plist, char **plist_xml, uint32_t * length);
  */
 typedef void (*plist_to_xml_func)(plist_t plist, char **plist_xml, uint32_t * length);
+
+/**
+ * 导出为二进制 plist 格式
+ *
+ * @param plist 要导出的 plist
+ * @param plist_bin 指向 char* 的指针。此函数分配内存，调用者负责释放。
+ * @param length 指向 uint32_t 变量的指针，表示分配缓冲区的长度。
+ *
+ * @原型 plist_err_t plist_to_bin(plist_t plist, char **plist_bin, uint32_t * length);
+ */
+typedef int (*plist_to_bin_func)(plist_t plist, char **plist_bin, uint32_t * length);
 
 /**
  * Free memory allocated by relevant libplist API calls:

@@ -340,8 +340,10 @@ public:
     plist_new_array_func plist_new_array;             ///< 创建数组
     plist_array_append_item_func plist_array_append_item; ///< 追加数组项
     plist_new_uint_func plist_new_uint;               ///< 创建无符号整数
+    plist_new_int_func plist_new_int;                 ///< 创建有符号整数
     plist_new_date_func plist_new_date;               ///< 创建日期
     plist_to_xml_func plist_to_xml;                   ///< 导出为 XML
+    plist_to_bin_func plist_to_bin;                   ///< 导出为二进制格式
     plist_mem_free_func plist_mem_free;               ///< 释放 plist 分配的内存 (替代旧版 plist_to_xml_free)
     
     /* ========================================================================
